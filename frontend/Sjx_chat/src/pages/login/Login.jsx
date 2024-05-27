@@ -1,4 +1,5 @@
 import React from 'react'
+import { Link } from 'react-router-dom';
 
 const Login = () => {
   return <div className='flex flex-col items-center justify-center min-w-96 mx-auto'>
@@ -34,7 +35,7 @@ const Login = () => {
         <div>
         <button className="btn btn-block btn-outline glass btn-opacity-2 btn-sm mt-0 max-w-xs">Login</button>
         <div className="divider divider-neutral text-xs">OR</div>
-        <button className='btn btn-sm btn-block mt-2 max-w-xs'>Signup</button>
+        <Link to='/signup'><button className='btn btn-sm btn-block mt-2 max-w-xs'>Signup</button></Link>
         </div>
        
         </form>
