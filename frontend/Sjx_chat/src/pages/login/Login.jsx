@@ -27,6 +27,8 @@ const Login = () => {
               <input type="checkbox" checked="unchecked" className="checkbox checkbox-sm" />
             </label>
           </div> */}
+
+          
             <div className="label">
             <span className="label-text-alt"></span>
             <a href='#' className="text-xs label-text-alt link link-hover hover:text-gray-300 hover:underline hover:text-xs">Forgot Password?</a>
