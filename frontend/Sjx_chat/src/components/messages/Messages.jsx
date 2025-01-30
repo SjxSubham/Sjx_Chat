@@ -15,7 +15,7 @@ const Messages = () => {
     setTimeout(() => {
 			lastMessageRef.current?.scrollIntoView({ behavior: "smooth" });
 		}, 50);
-  }, [messages])
+  }, [messages]);
   
   return (
     <div className='px-4 flex-1 overflow-auto'>
