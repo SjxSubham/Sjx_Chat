@@ -4,13 +4,15 @@
   "description": "",
   "main": "server.js",
   "scripts": {
-    "server": "nodemon backend/server.js"
+    "server": "nodemon backend/server.js",
+    "start": "node backend/server.js"
   },
   "type": "module",
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+<<<<<<< HEAD
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.7",
     "dotenv": "^16.4.1",
@@ -19,6 +21,9 @@
     "mongoose": "^8.1.1",
     "react-router-dom": "^6.22.3",
     "socket.io": "^4.7.4"
+=======
+    "bcryptjs": "^2.4.3"
+>>>>>>> 4101709 (force push)
   },
   "devDependencies": {
     "autoprefixer": "^10.4.17",

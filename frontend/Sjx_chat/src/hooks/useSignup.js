@@ -7,7 +7,7 @@ const useSignup = () => {
     const {setAuthUser} = useAuthContext();
 
     const signup = async({fullname,username,password,confirmPassword,gender}) => {
-        const success = handleInputErrors({fullname,username,password,confirmPassword,gender})
+        const success = handleInputErrors({fullname,username,password,confirmPassword,gender});
         if(!success) return;
         
         setloading(true);
@@ -32,22 +32,22 @@ const useSignup = () => {
         }
     };
     return{loading, signup};
-}
+};
 
 export default useSignup;
 
 function handleInputErrors({fullname,username,password,confirmPassword,gender}){
-    if(!fullname || username || !password || !confirmPassword || !gender){
-        toast.error("pls, fill in all the fields...")
-        return false
+    if(!fullname || !username || !password || !confirmPassword || !gender){
+        toast.error("pls, fill in all the fields...");
+        return false;
     }
     if( password !== confirmPassword){
-        toast.error('Passwords do not match')
-        return false
+        toast.error('Passwords do not match');
+        return false;
     }
     if(password.length < 6){
-        toast.error('Password must be atlest 6 charecters')
-        return false
+        toast.error('Password must be atlest 6 charecters');
+        return false;
     }
-    return true
+    return true;
 }
