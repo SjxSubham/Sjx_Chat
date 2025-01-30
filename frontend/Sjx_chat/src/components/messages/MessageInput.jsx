@@ -5,7 +5,7 @@ const MessageInput = () => {
   return (
     <form className='px-4 my-3'>
         <div className='w-full relative'>
-            <input type='text' className='border text-sm rounded-lg block w-full p-2.5 bg-gray-500 border-gray-600 text-white' placeholder = 'Send A Message' />
+            <input type='text' className='border text-sm rounded-lg block w-full p-2.5 bg-gray-900 border-gray-600 text-gray-300 bg-opacity-40' placeholder = 'Send A Message' />
         <button type='submit' className='absolute inset-y-0 end-0 flex items-center pe-3'>
         <BsSend />
         </button>
