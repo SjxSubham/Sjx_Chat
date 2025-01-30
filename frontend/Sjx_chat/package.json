@@ -24,6 +24,7 @@
     "react-router-dom": "^6.23.1",
     "vite": "^5.2.12"
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
     "@vitejs/plugin-react": "^4.2.1",
     "eslint": "^8.55.0",
@@ -34,5 +35,10 @@
 >>>>>>> c15f72e (Bump vite from 5.2.10 to 5.4.10 in /frontend/Sjx_chat)
 =======
 >>>>>>> 4101709 (force push)
+=======
+  },
+  "dependencies": {
+    "zustand": "^5.0.3"
+>>>>>>> 9a124da (nice)
   }
 }

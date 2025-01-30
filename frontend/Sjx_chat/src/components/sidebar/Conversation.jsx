@@ -1,55 +1,25 @@
-import React from 'react'
-
-const Conversation = () => {
+import useConversation from '../../zustand/useConversation';
+const Conversation = ({conversation, lastIdx, emoji}) => {
   return <>
     <div className='flex gap-2 items-center hover:bg-sky-300 rounded-end hover:bg-opacity-5 p-2 py-1 cursor-pointer'>
         <div className='avatar online'>
             <div className='w-10 rounded-full'>
-                <img src='https://daisyui.com/images/stock/photo-1534528741775-53994a69daeb.jpg' alt='user avatar' />
+                <img src={conversation.profilePic} alt='user avatar' />
             </div>
         </div>
         <div className='flex flex-col flex-1'>
             <div className='flex gap-3 justify-between'>
-                <p className='font-bold text-gray-200'>Subham</p>
-                    <span className='text-sm'></span>
+                <p className='font-bold text-gray-200'>{conversation.fullname}</p>
+                    <span className='text-sm'>{emoji}</span>
                 
             </div>
         </div>
     </div>
-    <div className='divide-y divide-dashed ' />
+    {!lastIdx && <div className='divider my-0 py-0 h-1' />}
         
     
   </>
   
 };
 
-export default Conversation
-
-// STARTER CODE SNIPPET
-
-// import React from 'react'
-
-// const Conversation = () => {
-//   return <>
-//     <div className='flex gap-2 items-center hover:bg-sky-300 rounded-end hover:bg-opacity-5 p-2 py-1 cursor-pointer'>
-//         <div className='avatar online'>
-//             <div className='w-10 rounded-full'>
-//                 <img src='https://daisyui.com/images/stock/photo-1534528741775-53994a69daeb.jpg' alt='user avatar' />
-//             </div>
-//         </div>
-//         <div className='flex flex-col flex-1'>
-//             <div className='flex gap-3 justify-between'>
-//                 <p className='font-bold text-gray-200'>Subham</p>
-//                     <span className='text-sm'></span>
-                
-//             </div>
-//         </div>
-//     </div>
-//     <div className='divide-y divide-dashed ' />
-        
-    
-//   </>
-  
-// };
-
-// export default Conversation
+export default Conversation;
