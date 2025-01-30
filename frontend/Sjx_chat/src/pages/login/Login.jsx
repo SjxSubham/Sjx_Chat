@@ -19,7 +19,7 @@ const Login = () => {
     <div className='w-full p-6 rounded-lg shadow-md bg-gray-400 bg-clip-padding backdrop-filter backdrop-blur-lg bg-opacity-0'>
       <h1 className='text-3xl font-semibold text-center text-gray-300'>
         Login 
-        <span class="font-semibold text-transparent text-3xl bg-clip-text bg-gradient-to-r from-purple-400 to-pink-600">  Sjx_ChatApp</span>
+        <span className="font-semibold text-transparent text-3xl bg-clip-text bg-gradient-to-r from-purple-400 to-pink-600">  Sjx_ChatApp</span>
 
         </h1>
         <form onSubmit={handleSubmit}>
@@ -42,14 +42,7 @@ const Login = () => {
             value={password}
               onChange={(e) => setPassword(e.target.value)}
               />
-            {/* <div className="form-control">
-            <label className="label cursor-pointer">
-              <span className="label-text">Remember me</span> 
-              <input type="checkbox" checked="unchecked" className="checkbox checkbox-sm" />
-            </label>
-          </div> */}
-
-              
+                        
             <div className="label">
             <span className="label-text-alt"></span>
             <a href='#' className="text-xs label-text-alt link link-hover hover:text-gray-300 hover:underline hover:text-xs">Forgot Password?</a>
@@ -67,9 +60,10 @@ const Login = () => {
        
         </form>
   </div>
-    </div>)
+    </div>
+    );
   
-}
+};
 
 export default Login;
 

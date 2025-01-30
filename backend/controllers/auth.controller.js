@@ -32,7 +32,7 @@ export const signup = async (req, res) => {
         });
         if(newUser){
             //Generate JNT token
-        generateTokenSetCookie(newUser._Id, res);
+        generateTokenSetCookie(newUser._id, res);
         await newUser.save();
 
         res.status(201).json({
