@@ -1,18 +1,19 @@
 import { useSocketContext } from '../../context/SocketContext';
 import useConversation from '../../zustand/useConversation';
 const Conversation = ({conversation, lastIdx, emoji}) => {
-    const {selectedConversation, setSelectConversation} = useConversation();
+    const {selectedConversation, setSelectedConversation} = useConversation();
 
     const isSelected = selectedConversation?._id === conversation._id;
-    const { onlineUsers } = useSocketContext();
+    const { onlineUsers } = useSocketContext()|| { onlineUsers: [] };
 	const isOnline = onlineUsers.includes(conversation._id);
-  return <>
+  return (
+  <>
     <div className={`flex gap-2 items-center hover:bg-sky-300 rounded-end hover:bg-opacity-5 p-2 py-1 cursor-pointer
-        ${isSelected ? 'bg-sky-300 bg-opacity-5' : ""}
-        `}
-         onClick={() => setSelectConversation(conversation)
-    }>
-        <div className={`avatar ${isOnline ? "online" : ""}`}>
+        ${isSelected ? 'bg-sky-300 bg-opacity-5' : ""
+        }`}
+         onClick={() => setSelectedConversation(conversation)}
+         >
+        <div className={`avatar ${isOnline ? 'online' : ''}`}>
             <div className='w-10 rounded-full'>
                 <img src={conversation.profilePic} alt='user avatar' />
             </div>
@@ -29,6 +30,7 @@ const Conversation = ({conversation, lastIdx, emoji}) => {
         
     
   </>
+  );
   
 };
 
