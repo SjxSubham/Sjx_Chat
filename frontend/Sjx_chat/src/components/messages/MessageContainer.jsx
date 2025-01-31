@@ -5,7 +5,6 @@ import { TiMessages } from "react-icons/ti";
 import { useEffect } from "react";
 import { useAuthContext } from "../../context/AuthContext";
 const MessageContainer = () => {
- 
   const {selectedConversation, setSelectedConversation} = useConversation();
 
     useEffect(() => {
