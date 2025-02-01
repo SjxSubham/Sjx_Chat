@@ -14,6 +14,7 @@
   "license": "ISC",
   "dependencies": {
 <<<<<<< HEAD
+<<<<<<< HEAD
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.7",
     "dotenv": "^16.4.1",
@@ -25,6 +26,10 @@
 =======
     "bcryptjs": "^2.4.3"
 >>>>>>> 4101709 (force push)
+=======
+    "bcryptjs": "^2.4.3",
+    "zustand": "^5.0.3"
+>>>>>>> d9a3520 (ok)
   },
   "devDependencies": {
     "autoprefixer": "^10.4.17",

@@ -58,32 +58,29 @@ export const SocketContextProvider = ({ children }) => {
     const { authUser } = useAuthContext();
 
     useEffect(() => {
-        let newSocket;
+        
 
         if (authUser) {
-            newSocket = io("https://sjx-chatapp.onrender.com", {
+            socket = io("https://sjx-chatapp.onrender.com", {
                 query: {
                     userId: authUser._id,
                 },
             });
 
-            newSocket.on("getOnlineUsers", (users) => {
+           
+
+            setSocket(socket);
+            socket.on("getOnlineUsers", (users) => {
                 setOnlineUsers(users);
             });
 
-            setSocket(newSocket);
+            return () => socket.close();
         } else {
-            // Clear state when no authenticated user
-            setSocket(null);
-            setOnlineUsers([]);
-        }
-
-        // Cleanup function to close socket when dependencies change
-        return () => {
-            if (newSocket) {
-                newSocket.close();
+            if (socket) {
+                socket.close();
+                setSocket(null);
             }
-        };
+        }
     }, [authUser]); // Only re-run when authUser changes
 
     return (
