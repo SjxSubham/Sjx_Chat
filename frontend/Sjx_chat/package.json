@@ -41,6 +41,7 @@
   "dependencies": {
     "@headlessui/react": "^2.2.0",
     "sjx_chat": "file:../..",
+    "socket.io": "^4.8.1",
     "socket.io-client": "^4.8.1",
     "zustand": "^5.0.3"
 >>>>>>> 9a124da (nice)
