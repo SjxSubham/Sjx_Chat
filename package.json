@@ -18,7 +18,7 @@
   "devDependencies": {
     "autoprefixer": "^10.4.17",
     "cookie-parser": "^1.4.6",
-    "daisyui": "^4.11.1",
+    "daisyui": "^4.12.23",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",

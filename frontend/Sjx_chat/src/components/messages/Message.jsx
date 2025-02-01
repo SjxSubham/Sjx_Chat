@@ -11,6 +11,16 @@ const Message = ({message}) => {
   const profilePic = fromMe ? authUser.profilePic : selectedConversation?.profilePic;
   const bubbleBgColor = fromMe ? 'bg-blue-500' : "";
   const shakeClass = message.shouldShake ? "shake" : "";
+
+
+  // useEffect(() => {
+  //   // Side effect logic related to the authUser prop
+  //   if (authUser) {
+  //     console.log(`Authenticated user: ${authUser.fullname}`);
+  //   }
+  // }, [authUser]);
+
+
   return (
         <div className={`chat ${chatClassName}`}>
         <div className='chat-image avatar'>
