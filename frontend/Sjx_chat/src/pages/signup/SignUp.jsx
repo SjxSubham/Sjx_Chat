@@ -24,6 +24,14 @@ const SignUp = () => {
     e.preventDefault();
     await signup(inputs);
   };
+
+  const handleUsernameKeyDown = (e) => {
+    if (e.key === ' ') {
+      e.preventDefault();
+    }
+  };
+
+  
   return (
    <div className='flex flex-col items-center justify-center min-w-96 mx-auto'>      
     <div className='w-full p-5 rounded-lg shadow-md bg-gray-400 bg-clip-padding backdrop-filter backdrop-blur-lg bg-opacity-0'>
@@ -52,6 +60,7 @@ const SignUp = () => {
             <input type="username" placeholder="e.g:- @iamsrk " className="input input-bordered w-full max-w-xs h-10 text-gray-200" 
             value={inputs.username}
             onChange={(e) => setInputs({...inputs, username: e.target.value})}
+            onKeyDown={handleUsernameKeyDown}
             />
         </div>
         <div>
