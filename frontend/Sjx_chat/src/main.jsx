@@ -12,7 +12,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       <AuthContextProvider>
         <SocketContextProvider>
           <App />
-        <App />
+        
         </SocketContextProvider>
       </AuthContextProvider>
     </BrowserRouter>
