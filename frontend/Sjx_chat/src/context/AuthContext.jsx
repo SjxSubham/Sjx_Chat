@@ -30,7 +30,7 @@ export const AuthContextProvider = ({ children }) => {
         JSON.parse(localStorage.getItem("chat-user")) || null
     );
 
-    // Add useEffect to persist state to localStorage
+    // I'm Adding useEffect to persist state to localStorage
     useEffect(() => {
         if (authUser) {
             localStorage.setItem("chat-user", JSON.stringify(authUser));
