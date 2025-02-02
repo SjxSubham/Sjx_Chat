@@ -25,7 +25,7 @@ body{
 }
 
 .chat-bubble {
-	max-width: 300px; /* Adjust the value as needed */
+	max-width: 300px; 
 	word-wrap: break-word;
   }
   
