@@ -30,6 +30,7 @@ const Message = ({message}) => {
           </div>
         </div>
         <div className={`chat-bubble text-md text-gray-100 ${bubbleBgColor} ${shakeClass} pb-2`}>{message.message}</div>
+<<<<<<< HEAD
 =======
 
 const Message = ({message}) => {
@@ -64,6 +65,8 @@ const Message = ({message}) => {
 =======
         <div className={`chat-bubble text-md text-gray-200 ${bubbleBgColor} ${shakeClass} pb-2`}>{message.message}</div>
 >>>>>>> 36c9183 (design)
+=======
+>>>>>>> d0311c2 (text colour)
         <div className='chat-footer opacity-50 text-xs flex gap-1 items-center'>{formattedTime}</div>
     </div>
   );
