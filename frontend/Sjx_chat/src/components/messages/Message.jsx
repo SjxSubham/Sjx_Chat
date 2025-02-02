@@ -58,8 +58,12 @@ const Message = ({message}) => {
                 <img alt="Tailwind CSS chat bubble component" src={profilePic} />
           </div>
         </div>
+<<<<<<< HEAD
         <div className={`chat-bubble text-white ${bubbleBgColor} ${shakeClass} pb-2`}>{message.message}</div>
 >>>>>>> 3a4d2c8 (okay now it's ready for deployment)
+=======
+        <div className={`chat-bubble text-md text-gray-200 ${bubbleBgColor} ${shakeClass} pb-2`}>{message.message}</div>
+>>>>>>> 36c9183 (design)
         <div className='chat-footer opacity-50 text-xs flex gap-1 items-center'>{formattedTime}</div>
     </div>
   );
