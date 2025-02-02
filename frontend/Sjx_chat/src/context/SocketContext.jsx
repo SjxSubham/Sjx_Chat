@@ -58,10 +58,10 @@ export const SocketContextProvider = ({ children }) => {
     const { authUser } = useAuthContext();
 
     useEffect(() => {
-        
+        let newSocket;
 
         if (authUser) {
-            socket = io("https://sjx-chatapp.onrender.com", {
+            newSocket = io("https://sjx-chatapp.onrender.com", {
                 query: {
                     userId: authUser._id,
                 },
@@ -69,18 +69,24 @@ export const SocketContextProvider = ({ children }) => {
 
            
 
-            setSocket(socket);
-            socket.on("getOnlineUsers", (users) => {
+            setSocket(newSocket);
+            newSocket.on("getOnlineUsers", (users) => {
                 setOnlineUsers(users);
             });
 
-            return () => socket.close();
+            //return () => socket.close();
         } else {
             if (socket) {
                 socket.close();
                 setSocket(null);
             }
         }
+
+        return () => {
+            if (newSocket) {
+              newSocket.close();
+            }
+          };
     }, [authUser]); // Only re-run when authUser changes
 
     return (
