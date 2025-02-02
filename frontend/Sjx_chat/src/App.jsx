@@ -5,6 +5,7 @@ import Login from "./pages/login/Login";
 import SignUp from "./pages/signup/SignUp";
 import { Toaster } from 'react-hot-toast';
 import { useAuthContext } from "./context/AuthContext";
+import Footer from "./components/Footer";
 function App() { 
   const { authUser } = useAuthContext();
   return (
