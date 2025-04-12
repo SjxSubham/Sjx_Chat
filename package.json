@@ -13,40 +13,21 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-<<<<<<< HEAD
-<<<<<<< HEAD
     "bcryptjs": "^2.4.3",
-<<<<<<< HEAD
     "cookie-parser": "^1.4.7",
-    "dotenv": "^16.4.1",
-    "express": "^4.21.1",
-    "jsonwebtoken": "^9.0.2",
-    "mongoose": "^8.1.1",
-    "react-router-dom": "^6.22.3",
-    "socket.io": "^4.7.4"
-=======
-    "bcryptjs": "^2.4.3"
->>>>>>> 4101709 (force push)
-=======
-    "bcryptjs": "^2.4.3",
-    "zustand": "^5.0.3"
->>>>>>> d9a3520 (ok)
-=======
-    "zustand": "^5.0.3"
->>>>>>> b572f5d86323f0319e499cb07f30ee4bb6f5758f
-  },
-  "devDependencies": {
-    "autoprefixer": "^10.4.17",
-    "cookie-parser": "^1.4.6",
-    "daisyui": "^4.12.23",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.4.0",
-    "nodemon": "^3.1.1",
-    "postcss": "^8.4.38",
     "react-router-dom": "^6.23.1",
     "socket.io": "^4.8.1",
+    "zustand": "^5.0.3"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.4.17",
+    "daisyui": "^4.12.23",
+    "nodemon": "^3.1.1",
+    "postcss": "^8.4.38",
     "tailwindcss": "^3.4.3"
   }
 }

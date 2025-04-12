@@ -1,10 +1,10 @@
 import { useAuthContext } from "../../context/AuthContext"
 import { extractTime } from "../../utils/extractTime";
 import useConversation from "../../zustand/useConversation";
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> b572f5d86323f0319e499cb07f30ee4bb6f5758f
+
+
+
+
 
 const Message = ({message}) => {
   const { authUser } = useAuthContext();
@@ -33,9 +33,9 @@ const Message = ({message}) => {
           </div>
         </div>
         <div className={`chat-bubble text-md text-gray-100 ${bubbleBgColor} ${shakeClass} pb-2`}>{message.message}</div>
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
+
+
+
 
 const Message = ({message}) => {
   const { authUser } = useAuthContext();
@@ -63,24 +63,19 @@ const Message = ({message}) => {
                 <img alt="Tailwind CSS chat bubble component" src={profilePic} />
           </div>
         </div>
-<<<<<<< HEAD
+
         <div className={`chat-bubble text-white ${bubbleBgColor} ${shakeClass} pb-2`}>{message.message}</div>
->>>>>>> 3a4d2c8 (okay now it's ready for deployment)
-=======
+
+
         <div className={`chat-bubble text-md text-gray-200 ${bubbleBgColor} ${shakeClass} pb-2`}>{message.message}</div>
->>>>>>> 36c9183 (design)
-=======
->>>>>>> d0311c2 (text colour)
+
+  
+
+
         <div className='chat-footer opacity-50 text-xs flex gap-1 items-center'>{formattedTime}</div>
     </div>
   );
 };
 
-=======
-        <div className='chat-footer opacity-50 text-xs flex gap-1 items-center'>{formattedTime}</div>
-    </div>
-  );
-};
 
->>>>>>> b572f5d86323f0319e499cb07f30ee4bb6f5758f
 export default Message;
