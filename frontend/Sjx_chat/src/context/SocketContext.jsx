@@ -1,97 +1,72 @@
-// import { createContext, useState, useEffect, useContext } from "react";
-// import { useAuthContext } from "./AuthContext";
-// import io from "socket.io-client";
-
-// const SocketContext = createContext();
-
-// export const useSocketContext = () => {
-// 	return useContext(SocketContext);
-// };
-
-// export const SocketContextProvider = ({ children }) => {
-// 	const [socket, setSocket] = useState(null);
-// 	const [onlineUsers, setOnlineUsers] = useState([]);
-// 	const { authUser } = useAuthContext();
-
-// 	useEffect(() => {
-// 		if (authUser) {
-// 			const socket = io("https://sjx-chatapp.onrender.com", {
-// 				query: {
-// 					userId: authUser._id,
-// 				},
-// 			});
-
-// 			setSocket(socket);
-
-// 			// socket.on() is used to listen to the events. can be used both on client and server side
-// 			socket.on("getOnlineUsers", (users) => {
-// 				setOnlineUsers(users);
-// 			});
-
-// 			return () => socket.close();
-// 		} else {
-// 			if (socket) {
-// 				socket.close();
-// 				setSocket(null);
-// 			}
-// 		};
-// 	}, [authUser]);
-
-// 	return <SocketContext.Provider value={{ socket, onlineUsers }}>{children}</SocketContext.Provider>;
-// };
-
-
-
 import { createContext, useState, useEffect, useContext } from "react";
 import { useAuthContext } from "./AuthContext";
 import io from "socket.io-client";
+import PropTypes from 'prop-types';
 
 const SocketContext = createContext();
 
 export const useSocketContext = () => {
-    return useContext(SocketContext);
+	const context = useContext(SocketContext);
+	if (!context) {
+		throw new Error('useSocketContext must be used within a SocketContextProvider');
+	}
+	return context;
 };
 
 export const SocketContextProvider = ({ children }) => {
-    const [socket, setSocket] = useState(null);
-    const [onlineUsers, setOnlineUsers] = useState([]);
-    const { authUser } = useAuthContext();
+	const [socket, setSocket] = useState(null);
+	const [onlineUsers, setOnlineUsers] = useState([]);
+	const { authUser } = useAuthContext();
 
-    useEffect(() => {
-        let newSocket;
+	useEffect(() => {
+		let newSocket;
 
-        if (authUser) {
-            newSocket = io("https://sjx-chatapp.onrender.com", {
-                query: {
-                    userId: authUser._id,
-                },
-            });
+		if (authUser) {
+			try {
+				newSocket = io(import.meta.env.VITE_SOCKET_URL || "https://sjx-chatapp.onrender.com", {
+					query: {
+						userId: authUser._id,
+					},
+					withCredentials: true
+				});
 
-           
+				setSocket(newSocket);
 
-            setSocket(newSocket);
-            newSocket.on("getOnlineUsers", (users) => {
-                setOnlineUsers(users);
-            });
+				newSocket.on("getOnlineUsers", (users) => {
+					setOnlineUsers(users);
+				});
 
-            //return () => socket.close();
-        } else {
-            if (socket) {
-                socket.close();
-                setSocket(null);
-            }
-        }
+				newSocket.on("error", (error) => {
+					console.error('Socket error:', error);
+				});
 
-        return () => {
-            if (newSocket) {
-              newSocket.close();
-            }
-          };
-    }, [authUser]); // Only re-run when authUser changes
+				newSocket.on("connect_error", (error) => {
+					console.error('Socket connection error:', error);
+				});
+			} catch (error) {
+				console.error('Error initializing socket:', error);
+			}
+		} else {
+			if (socket) {
+				socket.close();
+				setSocket(null);
+			}
+		}
 
-    return (
-        <SocketContext.Provider value={{ socket, onlineUsers }}>
-            {children}
-        </SocketContext.Provider>
-    );
+		return () => {
+			if (newSocket) {
+				newSocket.close();
+			}
+		};
+	}, [authUser]);
+
+	return (
+		<SocketContext.Provider value={{ socket, onlineUsers }}>
+			{children}
+		</SocketContext.Provider>
+	);
+};
+
+SocketContextProvider.propTypes = {
+	children: PropTypes.node.isRequired
 };
