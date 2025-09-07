@@ -17,6 +17,9 @@ const messageSchema = new mongoose.Schema({
     }//createdAt, UpdateAt => mes
 }, {timestamps: true});
 
+// 1. needed to be fixed - collection name should be messages (not Message) - mongoose will take care of it
+// messages are returning to the same user
+
 const Message = mongoose.model("Message", messageSchema);
 
 export default Message;
