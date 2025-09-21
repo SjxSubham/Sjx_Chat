@@ -16,14 +16,20 @@ export default defineConfig(({ command }) => ({
   build: {
     outDir: 'dist',
     sourcemap: false,
-    minify: 'terser',
+    minify: 'esbuild',
     rollupOptions: {
       output: {
         manualChunks: {
           vendor: ['react', 'react-dom', 'react-router-dom'],
+          socket: ['socket.io-client'],
         },
       },
     },
+    target: 'esnext',
+    chunkSizeWarningLimit: 1000,
+  },
+  optimizeDeps: {
+    include: ['react', 'react-dom', 'react-router-dom', 'socket.io-client'],
   },
   base: command === 'serve' ? '/' : '/',
 }));

@@ -9,7 +9,7 @@ lerna-debug.log*
 
 FIXES_APPLIED.md
 .env.example
-
+VERCEL_DEPLOYMENT_FIX.md
 
 .env
 node_modules

@@ -1,3 +1,33 @@
 {
-  "rewrites": [{ "source": "/(.*)", "destination": "/" }]
+  "version": 2,
+  "builds": [
+    {
+      "src": "backend/server.js",
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": ["backend/**"]
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "backend/server.js"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "frontend/Sjx_chat/dist/index.html"
+    }
+  ],
+  "outputDirectory": "frontend/Sjx_chat/dist",
+  "installCommand": "npm install && npm install --prefix frontend/Sjx_chat",
+  "buildCommand": "npm run build-vercel --prefix frontend/Sjx_chat",
+  "env": {
+    "NODE_ENV": "production"
+  },
+  "functions": {
+    "backend/server.js": {
+      "maxDuration": 30
+    }
+  }
 }
