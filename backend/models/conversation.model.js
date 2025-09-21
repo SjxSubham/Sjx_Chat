@@ -12,7 +12,7 @@ const conversationSchema = new mongoose.Schema({
     default:[],
 
 }]
-},{timestammps:true});
+},{timestamps:true});
 
 const Conversation = mongoose.model("Conversation", conversationSchema);
 

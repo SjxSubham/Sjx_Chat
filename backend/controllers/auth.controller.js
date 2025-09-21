@@ -46,7 +46,7 @@ export const signup = async (req, res) => {
     }
     } catch (error) {
         console.log("Error in signup controller",error.message);
-        res.status(500).json({error:"Internal swerver Error"});
+        res.status(500).json({error:"Internal server Error"});
     }
 };
 export const login = async (req, res) => {
@@ -61,9 +61,9 @@ export const login = async (req, res) => {
     generateTokenSetCookie(user._id, res);
     res.status(200).json({
         _id: user._id,
-        fullname: User.fullname,
-        username: User.username,
-        profilePic: User.profilePic
+        fullname: user.fullname,
+        username: user.username,
+        profilePic: user.profilePic
     });
    } catch (error) {
     console.log("Error in login controller",error.message);
