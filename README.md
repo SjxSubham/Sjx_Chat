@@ -1,4 +1,5 @@
-# Sjx_ChatApp 🚀
+<h1> Sjx_ChatApp <img width="50" height="50" alt="Sjx_Chat" src="https://github.com/user-attachments/assets/03922aa4-4ca8-4a85-9f37-a04b544e8ac5" /> </h1>
+
 
 #### Welcome to **Sjx_ChatApp**, a powerful and intuitive real-time chat application that connects people seamlessly. Built with modern technologies, Sjx_ChatApp ensures a secure, fast, and user-friendly chatting experience.
 
