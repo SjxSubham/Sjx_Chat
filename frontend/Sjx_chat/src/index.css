@@ -66,3 +66,75 @@ body{
         @apply bg-clip-padding backdrop-filter backdrop-blur-md bg-opacity-10 hover:bg-gray-600/10 border border-gray-800 text-white;
     }
 }
+
+/* Emoji Animation Classes */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes bounceIn {
+    0% {
+        transform: scale(0.3);
+        opacity: 0;
+    }
+    50% {
+        transform: scale(1.05);
+    }
+    70% {
+        transform: scale(0.9);
+    }
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+@keyframes pulse {
+    0% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.1);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+.animate-fadeIn {
+    animation: fadeIn 0.3s ease-out;
+}
+
+.animate-bounceIn {
+    animation: bounceIn 0.4s ease-out;
+}
+
+.animate-pulse-emoji {
+    animation: pulse 0.6s ease-in-out infinite;
+}
+
+/* Emoji Picker Scrollbar */
+.emoji-picker-scroll::-webkit-scrollbar {
+    width: 6px;
+}
+
+.emoji-picker-scroll::-webkit-scrollbar-track {
+    background: #374151;
+    border-radius: 3px;
+}
+
+.emoji-picker-scroll::-webkit-scrollbar-thumb {
+    background: #6B7280;
+    border-radius: 3px;
+}
+
+.emoji-picker-scroll::-webkit-scrollbar-thumb:hover {
+    background: #9CA3AF;
+}
