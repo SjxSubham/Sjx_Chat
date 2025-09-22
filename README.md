@@ -58,6 +58,13 @@
    cd frontend/Sjx_chat
    npm install
    cd ../..
+
+   cd backend
+   npm install
+   cd ..
+
+   npm list
+   npm i
    ```
 
 3. **Environment Setup**
