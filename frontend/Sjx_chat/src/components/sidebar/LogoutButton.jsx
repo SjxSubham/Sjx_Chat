@@ -1,4 +1,5 @@
-import {BiLogOut} from 'react-icons/bi';
+// import {BiLogOut} from 'react-icons/bi';
+import { Power } from 'lucide-react';
 import useLogout from '../../hooks/useLogout';
 const LogoutButton = () => {
 
@@ -7,7 +8,7 @@ const LogoutButton = () => {
     <div className='mt-auto'>
         
          {!loading ? (
-            <BiLogOut className='w-6 h-6 text-white cursor-pointer' 
+            <Power className='w-6 h-6 text-white cursor-pointer' 
             onClick={logout}
             />
          ) : (
