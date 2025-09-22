@@ -4,7 +4,8 @@
 
 ---
 
-![WhatsApp Image 2025-01-31 at 18 50 12_3121a5a6](https://github.com/user-attachments/assets/b94ab8b7-53eb-4347-a3fe-5ef630bf59ad)
+<img width="500" height="500" alt="Sjx_Chat" src="https://github.com/user-attachments/assets/03922aa4-4ca8-4a85-9f37-a04b544e8ac5" />
+
 
 ---
 
