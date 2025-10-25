@@ -1,24 +1,31 @@
-import mongoose from 'mongoose';
+import mongoose from "mongoose";
 
-const messageSchema = new mongoose.Schema({
-    senderId:{
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-        required: true,
+const messageSchema = new mongoose.Schema(
+  {
+    senderId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
     },
-    receiverId:{
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-        required: true,
+    receiverId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
     },
-    message:{
-        type: String,
-        required: true,
-    }//createdAt, UpdateAt => mes
-}, {timestamps: true});
-
-// 1. needed to be fixed - collection name should be messages (not Message) - mongoose will take care of it
-// messages are returning to the same user
+    message: {
+      type: String,
+    },
+    image: {
+      type: String,
+      default: null,
+    },
+    imageSize: {
+      type: Number,
+      default: null,
+    },
+  },
+  { timestamps: true },
+);
 
 const Message = mongoose.model("Message", messageSchema);
 

@@ -14,15 +14,15 @@ const __dirname = path.resolve();
 
 // Security middleware
 app.use((req, res, next) => {
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'DENY');
-    res.setHeader('X-XSS-Protection', '1; mode=block');
-    next();
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("X-XSS-Protection", "1; mode=block");
+  next();
 });
 
 // Body parsing middleware
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.use(cookieParser());
 
 // API routes
@@ -35,25 +35,27 @@ app.use(express.static(path.join(__dirname, "/frontend/Sjx_chat/dist")));
 
 // Handle all other routes
 app.get("*", (req, res) => {
-    res.sendFile(path.join(__dirname, "frontend", "Sjx_chat", "dist", "index.html"));
+  res.sendFile(
+    path.join(__dirname, "frontend", "Sjx_chat", "dist", "index.html"),
+  );
 });
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-    console.error(err.stack);
-    res.status(500).json({ 
-        error: 'Something went wrong!',
-        message: process.env.NODE_ENV === 'development' ? err.message : undefined
-    });
+  console.error(err.stack);
+  res.status(500).json({
+    error: "Something went wrong!",
+    message: process.env.NODE_ENV === "development" ? err.message : undefined,
+  });
 });
 
 // Start server
 server.listen(PORT, async () => {
-    try {
-        await connectToMongoDB();
-        console.log(`Server running on port ${PORT}`);
-    } catch (error) {
-        console.error('Failed to start server:', error);
-        process.exit(1);
-    }
+  try {
+    await connectToMongoDB();
+    console.log(`Server running on port ${PORT}`);
+  } catch (error) {
+    console.error("Failed to start server:", error);
+    process.exit(1);
+  }
 });
