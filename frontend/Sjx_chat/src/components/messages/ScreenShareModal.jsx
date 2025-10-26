@@ -238,7 +238,6 @@ const ScreenShareModal = ({
       console.error(error);
     }
   };
-</parameter>
 
   const handleAcceptShare = (roomId) => {
     if (!roomId || !incomingInitiatorId) {
@@ -259,7 +258,6 @@ const ScreenShareModal = ({
     setIncomingRoomId(null);
     toast.success("Screen share accepted");
   };
-</parameter>
 
   const handleStopShare = () => {
     stopScreenShare(recipientId, conversationId);
@@ -274,7 +272,6 @@ const ScreenShareModal = ({
       clearInterval(timerRef.current);
     }
   };
-</parameter>
 
   const handleClose = () => {
     if (isSharing) {
@@ -293,7 +290,6 @@ const ScreenShareModal = ({
     setIncomingInitiatorId(null);
     onClose();
   };
-</parameter>
 
   if (!isOpen) return null;
 
