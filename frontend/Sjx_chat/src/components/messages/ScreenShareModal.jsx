@@ -58,6 +58,8 @@ const ScreenShareModal = ({
   const [elapsedTime, setElapsedTime] = useState(0);
   const [encryptionKey, setEncryptionKey] = useState(null);
   const [isAwaitingAcceptance, setIsAwaitingAcceptance] = useState(false);
+  const [incomingRoomId, setIncomingRoomId] = useState(null);
+  const [incomingInitiatorId, setIncomingInitiatorId] = useState(null);
   const remoteCanvasRef = useRef(null);
   const timerRef = useRef(null);
   const { startScreenShare, stopScreenShare, isSharing, canvasRef } =
@@ -160,9 +162,25 @@ const ScreenShareModal = ({
       toast.error(error || "Screen share error occurred");
     };
 
+    const handleScreenShareRequest = ({
+      initiatorId,
+      roomId,
+      encryptionKey: key,
+    }) => {
+      // Incoming request from initiator
+      setEncryptionKey(key);
+      setIncomingRoomId(roomId);
+      setIncomingInitiatorId(initiatorId);
+      toast.info(`${recipientName} is requesting to share their screen`);
+      console.log(
+        `[Screen Share] Request received from ${initiatorId} with room ${roomId}`,
+      );
+    };
+
     socket.on("screen-stream-data", handleScreenStreamData);
     socket.on("screen-share-stopped", handleScreenShareStopped);
     socket.on("screen-share-accepted", handleScreenShareAccepted);
+    socket.on("screen-share-request", handleScreenShareRequest);
     socket.on("screen-share-rejected", handleScreenShareRejected);
     socket.on("screen-share-error", handleScreenShareError);
 
@@ -170,6 +188,7 @@ const ScreenShareModal = ({
       socket.off("screen-stream-data", handleScreenStreamData);
       socket.off("screen-share-stopped", handleScreenShareStopped);
       socket.off("screen-share-accepted", handleScreenShareAccepted);
+      socket.off("screen-share-request", handleScreenShareRequest);
       socket.off("screen-share-rejected", handleScreenShareRejected);
       socket.off("screen-share-error", handleScreenShareError);
     };
@@ -209,12 +228,33 @@ const ScreenShareModal = ({
     }
   };
 
+  const handleAcceptShare = (roomId) => {
+    if (!roomId || !incomingInitiatorId) {
+      toast.error("Missing room or initiator information");
+      return;
+    }
+
+    // Accept the screen share
+    socket?.emit("accept-screen-share", {
+      initiatorId: incomingInitiatorId,
+      receiverId: authUser?._id,
+      roomId: roomId,
+      conversationId: conversationId,
+    });
+
+    setIsReceiving(true);
+    setSessionStartTime(Date.now());
+    toast.success("Screen share accepted");
+  };
+
   const handleStopShare = () => {
     stopScreenShare(recipientId, conversationId);
     setCanvasData(null);
     setSessionStartTime(null);
     setElapsedTime(0);
     setEncryptionKey(null);
+    setIncomingRoomId(null);
+    setIncomingInitiatorId(null);
     if (timerRef.current) {
       clearInterval(timerRef.current);
     }
@@ -226,6 +266,8 @@ const ScreenShareModal = ({
     }
     setEncryptionKey(null);
     setIsAwaitingAcceptance(false);
+    setIncomingRoomId(null);
+    setIncomingInitiatorId(null);
     onClose();
   };
 
@@ -289,6 +331,44 @@ const ScreenShareModal = ({
                 Waiting for {recipientName || "recipient"} to accept the screen
                 share...
               </p>
+            </div>
+          </div>
+        )}
+
+        {/* Incoming Request - Show Accept/Reject Buttons */}
+        {encryptionKey && !isSharing && !isAwaitingAcceptance && (
+          <div className="mb-4 px-4 py-3 bg-blue-50 rounded-lg border-l-4 border-blue-500">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
+                <p className="text-sm text-blue-700 font-medium">
+                  {recipientName || "User"} wants to share their screen
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleAcceptShare(incomingRoomId)}
+                  className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white text-sm font-medium rounded transition-colors"
+                >
+                  Accept
+                </button>
+                <button
+                  onClick={() => {
+                    setEncryptionKey(null);
+                    setIncomingRoomId(null);
+                    setIncomingInitiatorId(null);
+                    socket?.emit("reject-screen-share", {
+                      initiatorId: incomingInitiatorId,
+                      roomId: incomingRoomId,
+                      conversationId: conversationId,
+                    });
+                    toast.info("Screen share request rejected");
+                  }}
+                  className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white text-sm font-medium rounded transition-colors"
+                >
+                  Reject
+                </button>
+              </div>
             </div>
           </div>
         )}

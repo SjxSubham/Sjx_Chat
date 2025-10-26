@@ -5,8 +5,10 @@ import path from "path";
 import authRoutes from "./routes/auth.routes.js";
 import messageRoutes from "./routes/message.routes.js";
 import userRoutes from "./routes/user.routes.js";
+import keepAliveRoutes from "./routes/keepAlive.routes.js";
 import { app, server } from "./socket/socket.js";
 import connectToMongoDB from "./db/connectToMongoDB.js";
+import { initializeKeepAlive, stopKeepAlive } from "./cron/keepAlive.js";
 
 dotenv.config();
 const PORT = process.env.PORT || 5000;
@@ -29,6 +31,7 @@ app.use(cookieParser());
 app.use("/api/auth", authRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/keepalive", keepAliveRoutes);
 
 // Serve static files
 app.use(express.static(path.join(__dirname, "/frontend/Sjx_chat/dist")));
@@ -54,8 +57,31 @@ server.listen(PORT, async () => {
   try {
     await connectToMongoDB();
     console.log(`Server running on port ${PORT}`);
+
+    // Initialize keep-alive cron job to prevent site from sleeping
+    const SITE_URL = process.env.SITE_URL || `http://localhost:${PORT}`;
+    initializeKeepAlive(SITE_URL);
   } catch (error) {
     console.error("Failed to start server:", error);
     process.exit(1);
   }
+});
+
+// Handle graceful shutdown
+process.on("SIGTERM", () => {
+  console.log("\n📛 SIGTERM signal received: closing HTTP server");
+  stopKeepAlive();
+  server.close(() => {
+    console.log("🛑 HTTP server closed");
+    process.exit(0);
+  });
+});
+
+process.on("SIGINT", () => {
+  console.log("\n📛 SIGINT signal received: closing HTTP server");
+  stopKeepAlive();
+  server.close(() => {
+    console.log("🛑 HTTP server closed");
+    process.exit(0);
+  });
 });

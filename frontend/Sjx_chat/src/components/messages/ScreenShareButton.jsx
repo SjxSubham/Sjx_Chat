@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSocketContext } from "../../context/SocketContext";
 import { useAuthContext } from "../../context/AuthContext";
 import ScreenShareModal from "./ScreenShareModal";
@@ -16,6 +16,23 @@ const ScreenShareButton = ({
   const { authUser } = useAuthContext();
   const [showModal, setShowModal] = useState(false);
   const [screenShareReport, setScreenShareReport] = useState(null);
+
+  // Listen for incoming screen-share requests and auto-open modal
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleScreenShareRequest = () => {
+      // Auto-open modal when receiving a screen share request
+      setShowModal(true);
+      console.log("[Screen Share Button] Received request, opening modal");
+    };
+
+    socket.on("screen-share-request", handleScreenShareRequest);
+
+    return () => {
+      socket.off("screen-share-request", handleScreenShareRequest);
+    };
+  }, [socket]);
 
   const handleScreenShareClick = () => {
     if (!socket) {
