@@ -1,7 +1,7 @@
 import React from "react";
 import { BsSend } from "react-icons/bs";
 import { HiOutlineEmojiHappy } from "react-icons/hi";
-import { MdOutlineImageNotSupported } from "react-icons/md";
+import { BsImage } from "react-icons/bs";
 import useSendMessage from "../../hooks/useSendMessage";
 import { useState, useRef } from "react";
 import EmojiPicker from "./EmojiPicker";
@@ -150,7 +150,7 @@ const MessageInput = () => {
             type="text"
             className="border text-sm rounded-lg block w-full p-2.5 pr-32 bg-gray-900 border-gray-600 text-gray-300 bg-opacity-40 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
             placeholder={
-              imagePreview ? "Add a caption (optional)" : "Send A Message"
+              imagePreview ? "Add a caption (optional)" : " Send A Message"
             }
             value={message}
             onChange={(e) => setMessage(e.target.value)}
@@ -186,7 +186,7 @@ const MessageInput = () => {
             type="button"
             onClick={() => setShowEmojiPicker(!showEmojiPicker)}
             disabled={uploading}
-            className={`absolute inset-y-0 right-20 flex items-center px-2 transition-colors duration-150 ${
+            className={`absolute inset-y-0 right-16 flex items-center px-2 transition-colors duration-150 ${
               showEmojiPicker
                 ? "text-yellow-400"
                 : "text-gray-400 hover:text-yellow-400"
@@ -201,10 +201,10 @@ const MessageInput = () => {
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            className="absolute inset-y-0 right-12 flex items-center px-2 transition-colors duration-150 text-gray-400 hover:text-green-400 disabled:text-gray-600"
+            className="absolute inset-y-0 right-9 flex items-center px-2 transition-colors duration-150 text-gray-400 hover:text-green-400 disabled:text-gray-600"
             title="Upload image (max 2MB)"
           >
-            <MdOutlineImageNotSupported className="w-5 h-5" />
+            <BsImage className="w-4 h-4 " />
           </button>
 
           {/* Send Button */}
