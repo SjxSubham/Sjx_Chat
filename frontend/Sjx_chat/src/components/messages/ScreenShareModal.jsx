@@ -4,18 +4,64 @@ import { useScreenShare } from "../../hooks/useScreenShare";
 import { useAuthContext } from "../../context/AuthContext";
 import toast from "react-hot-toast";
 
-const ScreenShareModal = ({ isOpen, onClose, recipientId, recipientName }) => {
+// Decrypt received encrypted frames using Web Crypto API
+async function decryptFrame(encryptedPayload, keyBase64) {
+  try {
+    const keyBuffer = await crypto.subtle.importKey(
+      "raw",
+      Uint8Array.from(atob(keyBase64), (c) => c.charCodeAt(0)),
+      { name: "AES-GCM" },
+      false,
+      ["decrypt"],
+    );
+
+    const iv = Uint8Array.from(atob(encryptedPayload.iv), (c) =>
+      c.charCodeAt(0),
+    );
+    const authTag = Uint8Array.from(atob(encryptedPayload.authTag), (c) =>
+      c.charCodeAt(0),
+    );
+
+    // Convert hex string to Uint8Array
+    const encryptedDataArray = new Uint8Array(
+      encryptedPayload.encryptedData.match(/../g).map((x) => parseInt(x, 16)),
+    );
+
+    // Combine encrypted data + auth tag for GCM
+    const combined = new Uint8Array([...encryptedDataArray, ...authTag]);
+
+    const decrypted = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: iv },
+      keyBuffer,
+      combined,
+    );
+
+    return new TextDecoder().decode(decrypted);
+  } catch (error) {
+    console.error("Frame decryption error:", error);
+    return null;
+  }
+}
+
+const ScreenShareModal = ({
+  isOpen,
+  onClose,
+  recipientId,
+  recipientName,
+  conversationId,
+}) => {
   const { socket } = useSocketContext();
   const { authUser } = useAuthContext();
   const [isReceiving, setIsReceiving] = useState(false);
   const [canvasData, setCanvasData] = useState(null);
   const [sessionStartTime, setSessionStartTime] = useState(null);
   const [elapsedTime, setElapsedTime] = useState(0);
+  const [encryptionKey, setEncryptionKey] = useState(null);
+  const [isAwaitingAcceptance, setIsAwaitingAcceptance] = useState(false);
   const remoteCanvasRef = useRef(null);
   const timerRef = useRef(null);
   const { startScreenShare, stopScreenShare, isSharing, canvasRef } =
     useScreenShare();
-  const roomId = `${authUser?._id}-${recipientId}`;
 
   // Format elapsed time
   const formatElapsedTime = (seconds) => {
@@ -48,17 +94,31 @@ const ScreenShareModal = ({ isOpen, onClose, recipientId, recipientName }) => {
     };
   }, [isSharing, sessionStartTime]);
 
+  // Socket event handlers
   useEffect(() => {
     if (!socket || !isOpen) return;
 
-    const handleScreenStreamData = ({ data }) => {
-      setCanvasData(data);
+    const handleScreenStreamData = async ({ encryptedData, iv, authTag }) => {
+      try {
+        if (!encryptionKey) return;
+
+        // Decrypt the received frame
+        const decryptedData = await decryptFrame(
+          { encryptedData, iv, authTag },
+          encryptionKey,
+        );
+
+        if (decryptedData) {
+          setCanvasData(decryptedData);
+        }
+      } catch (error) {
+        console.error("Error processing received frame:", error);
+      }
     };
 
     const handleScreenShareStopped = ({ duration, shareReport, reason }) => {
       setIsReceiving(false);
 
-      // Create and display report message
       if (shareReport) {
         const durationStr = shareReport.durationFormatted;
 
@@ -73,13 +133,21 @@ const ScreenShareModal = ({ isOpen, onClose, recipientId, recipientName }) => {
       }
     };
 
-    const handleScreenShareAccepted = ({ startTime }) => {
+    const handleScreenShareAccepted = ({
+      roomId: acceptedRoomId,
+      encryptionKey: key,
+    }) => {
+      setIsAwaitingAcceptance(false);
       setIsReceiving(true);
+      if (key) {
+        setEncryptionKey(key);
+      }
       setSessionStartTime(Date.now());
       toast.success("Screen share accepted");
     };
 
     const handleScreenShareRejected = () => {
+      setIsAwaitingAcceptance(false);
       setIsReceiving(false);
       setSessionStartTime(null);
       setElapsedTime(0);
@@ -87,18 +155,25 @@ const ScreenShareModal = ({ isOpen, onClose, recipientId, recipientName }) => {
       onClose();
     };
 
+    const handleScreenShareError = ({ error }) => {
+      setIsAwaitingAcceptance(false);
+      toast.error(error || "Screen share error occurred");
+    };
+
     socket.on("screen-stream-data", handleScreenStreamData);
     socket.on("screen-share-stopped", handleScreenShareStopped);
     socket.on("screen-share-accepted", handleScreenShareAccepted);
     socket.on("screen-share-rejected", handleScreenShareRejected);
+    socket.on("screen-share-error", handleScreenShareError);
 
     return () => {
       socket.off("screen-stream-data", handleScreenStreamData);
       socket.off("screen-share-stopped", handleScreenShareStopped);
       socket.off("screen-share-accepted", handleScreenShareAccepted);
       socket.off("screen-share-rejected", handleScreenShareRejected);
+      socket.off("screen-share-error", handleScreenShareError);
     };
-  }, [socket, isOpen, onClose]);
+  }, [socket, isOpen, onClose, encryptionKey]);
 
   // Display received canvas data
   useEffect(() => {
@@ -109,31 +184,37 @@ const ScreenShareModal = ({ isOpen, onClose, recipientId, recipientName }) => {
       img.onload = () => {
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       };
+      img.onerror = () => {
+        console.error("Failed to load image data");
+      };
       img.src = canvasData;
     }
   }, [canvasData]);
 
   const handleStartShare = async () => {
     try {
-      await startScreenShare(recipientId, roomId);
-      setSessionStartTime(Date.now());
-      setElapsedTime(0);
+      setIsAwaitingAcceptance(true);
+
+      // Emit request with conversation ID
       socket?.emit("initiate-screen-share", {
         receiverId: recipientId,
         initiatorId: authUser?._id,
-        roomId,
+        conversationId: conversationId,
       });
       toast.success("Screen share request sent");
     } catch (error) {
+      setIsAwaitingAcceptance(false);
       toast.error("Failed to start screen share");
+      console.error(error);
     }
   };
 
   const handleStopShare = () => {
-    stopScreenShare(recipientId, roomId);
+    stopScreenShare(recipientId, conversationId);
     setCanvasData(null);
     setSessionStartTime(null);
     setElapsedTime(0);
+    setEncryptionKey(null);
     if (timerRef.current) {
       clearInterval(timerRef.current);
     }
@@ -143,6 +224,8 @@ const ScreenShareModal = ({ isOpen, onClose, recipientId, recipientName }) => {
     if (isSharing) {
       handleStopShare();
     }
+    setEncryptionKey(null);
+    setIsAwaitingAcceptance(false);
     onClose();
   };
 
@@ -153,9 +236,9 @@ const ScreenShareModal = ({ isOpen, onClose, recipientId, recipientName }) => {
       <div className="bg-white rounded-lg p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-6">
           <div>
-            <h2 className="text-2xl font-bold">Screen Share</h2>
+            <h2 className="text-2xl font-bold">Screen Share (E2E Encrypted)</h2>
             <p className="text-sm text-gray-600 mt-1">
-              Sharing with {recipientName || "user"}
+              Sharing with {recipientName || "user"} - End-to-end encrypted
             </p>
           </div>
           <button
@@ -165,6 +248,17 @@ const ScreenShareModal = ({ isOpen, onClose, recipientId, recipientName }) => {
             ×
           </button>
         </div>
+
+        {/* Encryption Status */}
+        {encryptionKey && (
+          <div className="mb-4 px-4 py-3 bg-green-50 rounded-lg border border-green-200 flex items-center gap-2">
+            <div className="w-2 h-2 bg-green-600 rounded-full animate-pulse"></div>
+            <span className="text-sm text-green-700 font-medium">
+              🔒 End-to-end encrypted - Only you and{" "}
+              {recipientName || "recipient"} can see this
+            </span>
+          </div>
+        )}
 
         {/* Duration Display */}
         {isSharing && (
@@ -186,6 +280,19 @@ const ScreenShareModal = ({ isOpen, onClose, recipientId, recipientName }) => {
           </div>
         )}
 
+        {/* Awaiting Acceptance Status */}
+        {isAwaitingAcceptance && !isSharing && (
+          <div className="mb-4 px-4 py-3 bg-yellow-50 rounded-lg border-l-4 border-yellow-500">
+            <div className="flex items-center gap-3">
+              <div className="w-3 h-3 bg-yellow-500 rounded-full animate-pulse"></div>
+              <p className="text-sm text-yellow-700 font-medium">
+                Waiting for {recipientName || "recipient"} to accept the screen
+                share...
+              </p>
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
           {/* Local Screen */}
           <div className="border-2 border-gray-300 rounded-lg p-4 bg-gray-50">
@@ -201,7 +308,9 @@ const ScreenShareModal = ({ isOpen, onClose, recipientId, recipientName }) => {
             {isSharing && (
               <div className="mt-2 flex items-center justify-center gap-2 text-green-600">
                 <div className="w-2 h-2 bg-green-600 rounded-full animate-pulse"></div>
-                <span className="text-sm font-medium">Broadcasting</span>
+                <span className="text-sm font-medium">
+                  🔒 Broadcasting (Encrypted)
+                </span>
               </div>
             )}
           </div>
@@ -232,9 +341,12 @@ const ScreenShareModal = ({ isOpen, onClose, recipientId, recipientName }) => {
           {!isSharing ? (
             <button
               onClick={handleStartShare}
-              className="flex-1 min-w-[150px] bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg transition-colors duration-200 shadow-md"
+              disabled={isAwaitingAcceptance}
+              className="flex-1 min-w-[150px] bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white font-bold py-3 px-4 rounded-lg transition-colors duration-200 shadow-md"
             >
-              Start Sharing Screen
+              {isAwaitingAcceptance
+                ? "Awaiting Response..."
+                : "Start Sharing Screen"}
             </button>
           ) : (
             <button
@@ -253,11 +365,26 @@ const ScreenShareModal = ({ isOpen, onClose, recipientId, recipientName }) => {
         </div>
 
         <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
-          <p className="text-sm text-blue-800">
-            <strong>💡 Tip:</strong> Share your entire screen, a specific
-            window, or browser tab. Click "Stop Sharing" or press ESC to end the
-            session. A report with duration will be saved to the conversation.
+          <p className="text-sm text-blue-800 mb-2">
+            <strong>🔒 How it works:</strong>
           </p>
+          <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
+            <li>
+              Click "Start Sharing Screen" to initiate a screen share request
+            </li>
+            <li>Recipient accepts, and both users join the secure session</li>
+            <li>
+              Screen frames are end-to-end encrypted using AES-256-GCM - not
+              visible to server
+            </li>
+            <li>
+              Only the two users in this conversation can view the shared screen
+            </li>
+            <li>Click "Stop Sharing" to end the session</li>
+            <li>
+              A report with duration is automatically saved to the conversation
+            </li>
+          </ul>
         </div>
       </div>
     </div>

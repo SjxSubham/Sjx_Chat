@@ -31,6 +31,7 @@ const MessageContainer = () => {
             <ScreenShareButton
               recipientId={selectedConversation._id}
               recipientName={selectedConversation.fullname}
+              conversationId={selectedConversation._id}
             />
           </div>
           <Messages />

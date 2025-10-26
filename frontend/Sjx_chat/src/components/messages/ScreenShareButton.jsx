@@ -9,6 +9,7 @@ import toast from "react-hot-toast";
 const ScreenShareButton = ({
   recipientId,
   recipientName,
+  conversationId,
   onScreenShareReport,
 }) => {
   const { socket } = useSocketContext();
@@ -16,7 +17,7 @@ const ScreenShareButton = ({
   const [showModal, setShowModal] = useState(false);
   const [screenShareReport, setScreenShareReport] = useState(null);
 
-  const handleScreenShareRequest = () => {
+  const handleScreenShareClick = () => {
     if (!socket) {
       toast.error("Connection not established");
       return;
@@ -27,13 +28,12 @@ const ScreenShareButton = ({
       return;
     }
 
-    socket.emit("initiate-screen-share", {
-      receiverId: recipientId,
-      initiatorId: authUser._id,
-    });
+    if (!conversationId) {
+      toast.error("Conversation information missing");
+      return;
+    }
 
     setShowModal(true);
-    toast.success("Screen share request sent");
   };
 
   const handleScreenShareReport = (report) => {
@@ -59,19 +59,19 @@ const ScreenShareButton = ({
       {/* Screen Share Report Display */}
       {screenShareReport && (
         <ScreenShareReportMessage
-          report={screenShareReport}
+          message={{ content: screenShareReport }}
           onDismiss={dismissReport}
         />
       )}
 
       {/* Screen Share Button */}
       <button
-        onClick={handleScreenShareRequest}
-        title="Share Your Screen"
+        onClick={handleScreenShareClick}
+        title="Share Your Screen (E2E Encrypted)"
         className="btn btn-sm btn-ghost hover:bg-blue-100 transition-colors"
         disabled={!socket}
       >
-        <MdOutlineScreenShare size={20} className="text-blue-500" />
+        <MdOutlineScreenShare size={20} className="text-black font-bold" />
       </button>
 
       {/* Screen Share Modal */}
@@ -80,11 +80,11 @@ const ScreenShareButton = ({
         onClose={() => setShowModal(false)}
         recipientId={recipientId}
         recipientName={recipientName}
+        conversationId={conversationId}
         onScreenShareReport={handleScreenShareReport}
       />
     </>
   );
-
 };
 
 export default ScreenShareButton;

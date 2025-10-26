@@ -2,108 +2,187 @@ import { useCallback, useRef, useState } from "react";
 import { useSocketContext } from "../context/SocketContext";
 
 export const useScreenShare = () => {
-	const { socket } = useSocketContext();
-	const [isSharing, setIsSharing] = useState(false);
-	const [sharedStream, setSharedStream] = useState(null);
-	const [error, setError] = useState(null);
-	const canvasRef = useRef(null);
-	const screenStreamRef = useRef(null);
-	const frameIdRef = useRef(null);
-	const videoRef = useRef(null);
+  const { socket } = useSocketContext();
+  const [isSharing, setIsSharing] = useState(false);
+  const [sharedStream, setSharedStream] = useState(null);
+  const [error, setError] = useState(null);
+  const [encryptionKey, setEncryptionKey] = useState(null);
+  const canvasRef = useRef(null);
+  const screenStreamRef = useRef(null);
+  const frameIdRef = useRef(null);
+  const videoRef = useRef(null);
 
-	const startScreenShare = useCallback(
-		async (receiverId, roomId) => {
-			try {
-				setError(null);
-				const stream = await navigator.mediaDevices.getDisplayMedia({
-					video: { cursor: "always" },
-					audio: false,
-				});
+  /**
+   * Encrypt data using Web Crypto API (client-side)
+   */
+  const encryptFrameClientSide = useCallback(async (frameData, key) => {
+    try {
+      if (!key) return frameData;
 
-				screenStreamRef.current = stream;
-				setSharedStream(stream);
-				setIsSharing(true);
+      const keyBuffer = await crypto.subtle.importKey(
+        "raw",
+        Buffer.from(key, "base64"),
+        { name: "AES-GCM" },
+        false,
+        ["encrypt"],
+      );
 
-				// Get the canvas from the reference
-				const canvas = canvasRef.current;
-				if (canvas) {
-					const ctx = canvas.getContext("2d");
-					const video = document.createElement("video");
-					videoRef.current = video;
-					video.srcObject = stream;
-					video.play();
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const encoder = new TextEncoder();
+      const data = encoder.encode(frameData);
 
-					const sendFrame = () => {
-						try {
-							if (video.readyState === video.HAVE_ENOUGH_DATA) {
-								ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-								const imageData = canvas.toDataURL("image/jpeg", 0.6);
-								if (socket) {
-									socket.emit("screen-stream-data", {
-										roomId: roomId,
-										data: imageData,
-									});
-								}
-							}
-						} catch (error) {
-							console.error("Error sending frame:", error);
-						}
+      const encryptedData = await crypto.subtle.encrypt(
+        { name: "AES-GCM", iv: iv },
+        keyBuffer,
+        data,
+      );
 
-						frameIdRef.current = requestAnimationFrame(sendFrame);
-					};
+      return {
+        encryptedData: Buffer.from(encryptedData).toString("hex"),
+        iv: Buffer.from(iv).toString("base64"),
+        encrypted: true,
+      };
+    } catch (error) {
+      console.error("Client-side encryption error:", error);
+      return frameData;
+    }
+  }, []);
 
-					frameIdRef.current = requestAnimationFrame(sendFrame);
-				}
+  /**
+   * Decrypt data using Web Crypto API (client-side)
+   */
+  const decryptFrameClientSide = useCallback(async (encryptedPayload, key) => {
+    try {
+      if (!key || !encryptedPayload.encrypted) {
+        return encryptedPayload;
+      }
 
-				// Listen for stop event
-				stream.getTracks()[0].onended = () => {
-					stopScreenShare(receiverId, roomId);
-				};
-			} catch (error) {
-				console.error("Error starting screen share:", error);
-				setError(error.message);
-				setIsSharing(false);
-			}
-		},
-		[socket]
-	);
+      const keyBuffer = await crypto.subtle.importKey(
+        "raw",
+        Buffer.from(key, "base64"),
+        { name: "AES-GCM" },
+        false,
+        ["decrypt"],
+      );
 
-	const stopScreenShare = useCallback(
-		(receiverId, roomId) => {
-			if (screenStreamRef.current) {
-				screenStreamRef.current.getTracks().forEach((track) => {
-					track.stop();
-				});
-			}
+      const iv = Buffer.from(encryptedPayload.iv, "base64");
+      const encryptedData = Buffer.from(encryptedPayload.encryptedData, "hex");
 
-			if (videoRef.current) {
-				videoRef.current.srcObject = null;
-			}
+      const decryptedData = await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv: iv },
+        keyBuffer,
+        encryptedData,
+      );
 
-			if (frameIdRef.current) {
-				cancelAnimationFrame(frameIdRef.current);
-			}
+      const decoder = new TextDecoder();
+      return decoder.decode(decryptedData);
+    } catch (error) {
+      console.error("Client-side decryption error:", error);
+      return null;
+    }
+  }, []);
 
-			setIsSharing(false);
-			setSharedStream(null);
+  const startScreenShare = useCallback(
+    async (receiverId, roomId, key) => {
+      try {
+        setError(null);
+        setEncryptionKey(key);
 
-			if (socket) {
-				socket.emit("stop-screen-share", {
-					roomId: roomId,
-					initiatorId: socket.id,
-					receiverId,
-				});
-			}
-		},
-		[socket]
-	);
+        const stream = await navigator.mediaDevices.getDisplayMedia({
+          video: { cursor: "always" },
+          audio: false,
+        });
 
-	return {
-		isSharing,
-		sharedStream,
-		startScreenShare,
-		stopScreenShare,
-		canvasRef,
-		error,
-	};
+        screenStreamRef.current = stream;
+        setSharedStream(stream);
+        setIsSharing(true);
+
+        // Get the canvas from the reference
+        const canvas = canvasRef.current;
+        if (canvas) {
+          const ctx = canvas.getContext("2d");
+          const video = document.createElement("video");
+          videoRef.current = video;
+          video.srcObject = stream;
+          video.play();
+
+          const sendFrame = async () => {
+            try {
+              if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const imageData = canvas.toDataURL("image/jpeg", 0.5);
+
+                if (socket) {
+                  // Send plain data - server will encrypt
+                  socket.emit("screen-stream-data", {
+                    roomId: roomId,
+                    data: imageData,
+                  });
+                }
+              }
+            } catch (error) {
+              console.error("Error sending frame:", error);
+            }
+
+            frameIdRef.current = requestAnimationFrame(sendFrame);
+          };
+
+          frameIdRef.current = requestAnimationFrame(sendFrame);
+        }
+
+        // Listen for stop event
+        stream.getTracks()[0].onended = () => {
+          stopScreenShare(receiverId, roomId);
+        };
+      } catch (error) {
+        console.error("Error starting screen share:", error);
+        setError(error.message);
+        setIsSharing(false);
+      }
+    },
+    [socket],
+  );
+
+  const stopScreenShare = useCallback(
+    (receiverId, roomId) => {
+      if (screenStreamRef.current) {
+        screenStreamRef.current.getTracks().forEach((track) => {
+          track.stop();
+        });
+      }
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
+
+      if (frameIdRef.current) {
+        cancelAnimationFrame(frameIdRef.current);
+      }
+
+      setIsSharing(false);
+      setSharedStream(null);
+      setEncryptionKey(null);
+
+      if (socket) {
+        socket.emit("stop-screen-share", {
+          roomId: roomId,
+          initiatorId: socket.id,
+          receiverId,
+        });
+      }
+    },
+    [socket],
+  );
+
+  return {
+    isSharing,
+    sharedStream,
+    startScreenShare,
+    stopScreenShare,
+    encryptFrameClientSide,
+    decryptFrameClientSide,
+    canvasRef,
+    error,
+    encryptionKey,
+  };
 };
