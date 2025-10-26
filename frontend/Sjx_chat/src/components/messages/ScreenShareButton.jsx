@@ -3,6 +3,7 @@ import { useSocketContext } from "../../context/SocketContext";
 import { useAuthContext } from "../../context/AuthContext";
 import ScreenShareModal from "./ScreenShareModal";
 import ScreenShareReportMessage from "./ScreenShareReportMessage";
+import ScreenShareNotification from "./ScreenShareNotification";
 import { MdOutlineScreenShare } from "react-icons/md";
 import toast from "react-hot-toast";
 
@@ -16,8 +17,9 @@ const ScreenShareButton = ({
   const { authUser } = useAuthContext();
   const [showModal, setShowModal] = useState(false);
   const [screenShareReport, setScreenShareReport] = useState(null);
+  const [outgoingRequestRoomId, setOutgoingRequestRoomId] = useState(null);
 
-  // Listen for incoming screen-share requests and auto-open modal
+  // Listen for socket events
   useEffect(() => {
     if (!socket) return;
 
@@ -27,10 +29,32 @@ const ScreenShareButton = ({
       console.log("[Screen Share Button] Received request, opening modal");
     };
 
+    const handleScreenShareAccepted = () => {
+      setOutgoingRequestRoomId(null);
+      setShowModal(true);
+      toast.success("Screen share request accepted!");
+    };
+
+    const handleScreenShareRejected = () => {
+      setOutgoingRequestRoomId(null);
+      toast.error("Screen share request was rejected");
+    };
+
+    const handleScreenShareCancelled = () => {
+      setOutgoingRequestRoomId(null);
+      toast.info("Screen share request was cancelled by recipient");
+    };
+
     socket.on("screen-share-request", handleScreenShareRequest);
+    socket.on("screen-share-accepted", handleScreenShareAccepted);
+    socket.on("screen-share-rejected", handleScreenShareRejected);
+    socket.on("screen-share-cancelled", handleScreenShareCancelled);
 
     return () => {
       socket.off("screen-share-request", handleScreenShareRequest);
+      socket.off("screen-share-accepted", handleScreenShareAccepted);
+      socket.off("screen-share-rejected", handleScreenShareRejected);
+      socket.off("screen-share-cancelled", handleScreenShareCancelled);
     };
   }, [socket]);
 
@@ -47,6 +71,11 @@ const ScreenShareButton = ({
 
     if (!conversationId) {
       toast.error("Conversation information missing");
+      return;
+    }
+
+    if (outgoingRequestRoomId) {
+      toast.error("You already have a pending screen share request");
       return;
     }
 
@@ -71,6 +100,23 @@ const ScreenShareButton = ({
     setScreenShareReport(null);
   };
 
+  const handleRequestSent = (roomId) => {
+    setOutgoingRequestRoomId(roomId);
+  };
+
+  const handleCancelRequest = () => {
+    if (!outgoingRequestRoomId) return;
+
+    socket?.emit("cancel-screen-share-request", {
+      receiverId: recipientId,
+      roomId: outgoingRequestRoomId,
+      conversationId: conversationId,
+    });
+
+    setOutgoingRequestRoomId(null);
+    toast.info("Screen share request cancelled");
+  };
+
   return (
     <>
       {/* Screen Share Report Display */}
@@ -81,12 +127,22 @@ const ScreenShareButton = ({
         />
       )}
 
+      {/* Screen Share Notification Banner */}
+      <ScreenShareNotification
+        recipientId={recipientId}
+        recipientName={recipientName}
+        conversationId={conversationId}
+        outgoingRequestActive={!!outgoingRequestRoomId}
+        onCancelRequest={handleCancelRequest}
+        onRequestSent={handleRequestSent}
+      />
+
       {/* Screen Share Button */}
       <button
         onClick={handleScreenShareClick}
         title="Share Your Screen (E2E Encrypted)"
         className="btn btn-sm btn-ghost hover:bg-blue-100 transition-colors"
-        disabled={!socket}
+        disabled={!socket || !!outgoingRequestRoomId}
       >
         <MdOutlineScreenShare size={20} className="text-black font-bold" />
       </button>
@@ -99,6 +155,7 @@ const ScreenShareButton = ({
         recipientName={recipientName}
         conversationId={conversationId}
         onScreenShareReport={handleScreenShareReport}
+        onRequestSent={handleRequestSent}
       />
     </>
   );

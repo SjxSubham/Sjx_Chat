@@ -5,6 +5,7 @@ import { TiMessages } from "react-icons/ti";
 import { useEffect } from "react";
 import { useAuthContext } from "../../context/AuthContext";
 import ScreenShareButton from "./ScreenShareButton";
+import ScreenShareNotification from "./ScreenShareNotification";
 
 const MessageContainer = () => {
   const { selectedConversation, setSelectedConversation } = useConversation();
@@ -34,6 +35,11 @@ const MessageContainer = () => {
               conversationId={selectedConversation._id}
             />
           </div>
+          <ScreenShareNotification
+            recipientId={selectedConversation._id}
+            recipientName={selectedConversation.fullname}
+            conversationId={selectedConversation._id}
+          />
           <Messages />
           <MessageInput />
         </>

@@ -49,6 +49,7 @@ const ScreenShareModal = ({
   recipientId,
   recipientName,
   conversationId,
+  onRequestSent,
 }) => {
   const { socket } = useSocketContext();
   const { authUser } = useAuthContext();
@@ -214,12 +215,22 @@ const ScreenShareModal = ({
     try {
       setIsAwaitingAcceptance(true);
 
+      // Generate roomId locally
+      const roomId = `screen-share-${conversationId}-${authUser?._id}-${Date.now()}`;
+
       // Emit request with conversation ID
       socket?.emit("initiate-screen-share", {
         receiverId: recipientId,
         initiatorId: authUser?._id,
         conversationId: conversationId,
+        roomId: roomId,
       });
+
+      // Notify parent component that request was sent
+      if (onRequestSent) {
+        onRequestSent(roomId);
+      }
+
       toast.success("Screen share request sent");
     } catch (error) {
       setIsAwaitingAcceptance(false);
@@ -227,6 +238,7 @@ const ScreenShareModal = ({
       console.error(error);
     }
   };
+</parameter>
 
   const handleAcceptShare = (roomId) => {
     if (!roomId || !incomingInitiatorId) {
@@ -244,8 +256,10 @@ const ScreenShareModal = ({
 
     setIsReceiving(true);
     setSessionStartTime(Date.now());
+    setIncomingRoomId(null);
     toast.success("Screen share accepted");
   };
+</parameter>
 
   const handleStopShare = () => {
     stopScreenShare(recipientId, conversationId);
@@ -255,14 +269,23 @@ const ScreenShareModal = ({
     setEncryptionKey(null);
     setIncomingRoomId(null);
     setIncomingInitiatorId(null);
+    setIsAwaitingAcceptance(false);
     if (timerRef.current) {
       clearInterval(timerRef.current);
     }
   };
+</parameter>
 
   const handleClose = () => {
     if (isSharing) {
       handleStopShare();
+    }
+    if (isAwaitingAcceptance) {
+      // Cancel the request if modal is closed while waiting
+      socket?.emit("cancel-screen-share-request", {
+        receiverId: recipientId,
+        conversationId: conversationId,
+      });
     }
     setEncryptionKey(null);
     setIsAwaitingAcceptance(false);
@@ -270,6 +293,7 @@ const ScreenShareModal = ({
     setIncomingInitiatorId(null);
     onClose();
   };
+</parameter>
 
   if (!isOpen) return null;
 

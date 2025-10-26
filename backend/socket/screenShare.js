@@ -93,7 +93,7 @@ export const initializeScreenShareHandlers = (socket) => {
    */
   socket.on(
     "initiate-screen-share",
-    ({ receiverId, initiatorId, conversationId }) => {
+    ({ receiverId, initiatorId, conversationId, roomId }) => {
       try {
         const receiverSocketId = getReceiverSocketId(receiverId);
 
@@ -113,10 +113,12 @@ export const initializeScreenShareHandlers = (socket) => {
           return;
         }
 
-        const roomId = `screen-share-${conversationId}-${initiatorId}-${Date.now()}`;
+        const generatedRoomId =
+          roomId ||
+          `screen-share-${conversationId}-${initiatorId}-${Date.now()}`;
         const encryptionKey = generateEncryptionKey();
 
-        screenShareSessions[roomId] = {
+        screenShareSessions[generatedRoomId] = {
           initiatorId,
           receiverId,
           conversationId,
@@ -130,17 +132,17 @@ export const initializeScreenShareHandlers = (socket) => {
         };
 
         // Mark this conversation as having an active share
-        activeSharesByConversation[conversationId] = roomId;
+        activeSharesByConversation[conversationId] = generatedRoomId;
 
         // Send request to receiver with encryption key
         io.to(receiverSocketId).emit("screen-share-request", {
           initiatorId,
-          roomId,
+          roomId: generatedRoomId,
           encryptionKey: encryptionKey, // Both users get the same key
         });
 
         console.log(
-          `[Screen Share] Request initiated: ${initiatorId} -> ${receiverId} (Room: ${roomId})`,
+          `[Screen Share] Request initiated: ${initiatorId} -> ${receiverId} (Room: ${generatedRoomId})`,
         );
       } catch (error) {
         console.error("Error initiating screen share:", error);
@@ -217,6 +219,31 @@ export const initializeScreenShareHandlers = (socket) => {
         }
       } catch (error) {
         console.error("Error rejecting screen share:", error);
+      }
+    },
+  );
+
+  /**
+   * Cancel screen share request (initiated by the sender)
+   */
+  socket.on(
+    "cancel-screen-share-request",
+    ({ receiverId, roomId, conversationId }) => {
+      try {
+        const receiverSocketId = getReceiverSocketId(receiverId);
+
+        if (screenShareSessions[roomId]) {
+          const session = screenShareSessions[roomId];
+          delete activeSharesByConversation[session.conversationId];
+          delete screenShareSessions[roomId];
+        }
+
+        if (receiverSocketId) {
+          io.to(receiverSocketId).emit("screen-share-cancelled", { roomId });
+          console.log(`[Screen Share] Cancelled: ${roomId}`);
+        }
+      } catch (error) {
+        console.error("Error cancelling screen share request:", error);
       }
     },
   );
