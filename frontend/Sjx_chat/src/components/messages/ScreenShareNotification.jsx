@@ -11,11 +11,13 @@ const ScreenShareNotification = ({
   conversationId,
   onAccept,
   onReject,
+  outgoingRequestActive,
+  onCancelRequest,
+  onRequestSent,
 }) => {
   const { socket } = useSocketContext();
   const { authUser } = useAuthContext();
   const [incomingRequest, setIncomingRequest] = useState(null);
-  const [outgoingRequest, setOutgoingRequest] = useState(null);
 
   useEffect(() => {
     if (!socket) return;
@@ -34,19 +36,17 @@ const ScreenShareNotification = ({
       });
       console.log(
         "[Notification] Received screen share request from:",
-        initiatorId
+        initiatorId,
       );
     };
 
     // Handle request acceptance
     const handleScreenShareAccepted = ({ roomId, encryptionKey }) => {
-      setOutgoingRequest(null);
       console.log("[Notification] Request accepted");
     };
 
     // Handle request rejection
     const handleScreenShareRejected = () => {
-      setOutgoingRequest(null);
       toast.info("Screen share request was rejected");
       console.log("[Notification] Request rejected");
     };
@@ -106,26 +106,10 @@ const ScreenShareNotification = ({
     toast.info("Screen share request rejected");
   };
 
-  const handleRequestSent = (roomId) => {
-    setOutgoingRequest({
-      roomId,
-      recipientId,
-      conversationId,
-      createdAt: Date.now(),
-    });
-  };
-
   const handleCancelRequest = () => {
-    if (!outgoingRequest) return;
-
-    socket?.emit("cancel-screen-share-request", {
-      receiverId: recipientId,
-      roomId: outgoingRequest.roomId,
-      conversationId: conversationId,
-    });
-
-    setOutgoingRequest(null);
-    toast.info("Screen share request cancelled");
+    if (onCancelRequest) {
+      onCancelRequest();
+    }
   };
 
   // Incoming request notification
@@ -141,7 +125,8 @@ const ScreenShareNotification = ({
             </div>
             <div className="flex-1">
               <p className="font-semibold text-blue-900">
-                {incomingRequest.initiatorName || "User"} wants to share their screen
+                {incomingRequest.initiatorName || "User"} wants to share their
+                screen
               </p>
               <p className="text-sm text-blue-700">
                 🔒 End-to-end encrypted screen sharing
@@ -170,7 +155,7 @@ const ScreenShareNotification = ({
   }
 
   // Outgoing request notification
-  if (outgoingRequest) {
+  if (outgoingRequestActive) {
     return (
       <div className="mb-4 p-4 bg-gradient-to-r from-amber-50 to-orange-50 rounded-lg border-l-4 border-orange-500 shadow-md animate-in fade-in slide-in-from-top">
         <div className="flex items-center justify-between gap-4">

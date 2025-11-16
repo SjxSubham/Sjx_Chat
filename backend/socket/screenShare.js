@@ -178,7 +178,10 @@ export const initializeScreenShareHandlers = (socket) => {
 
         if (initiatorSocketId) {
           // Notify initiator to join room
-          io.to(initiatorSocketId).emit("screen-share-accepted", { roomId });
+          io.to(initiatorSocketId).emit("screen-share-accepted", {
+            roomId,
+            encryptionKey: session.encryptionKey,
+          });
 
           // Get initiator socket and make them join room too
           const initiatorSocket = io.sockets.sockets.get(initiatorSocketId);

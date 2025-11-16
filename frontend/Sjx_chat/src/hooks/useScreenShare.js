@@ -1,8 +1,11 @@
 import { useCallback, useRef, useState } from "react";
 import { useSocketContext } from "../context/SocketContext";
+import { useAuthContext } from "../context/AuthContext";
 
 export const useScreenShare = () => {
   const { socket } = useSocketContext();
+  const { authUser } = useAuthContext();
+
   const [isSharing, setIsSharing] = useState(false);
   const [sharedStream, setSharedStream] = useState(null);
   const [error, setError] = useState(null);
@@ -11,6 +14,7 @@ export const useScreenShare = () => {
   const screenStreamRef = useRef(null);
   const frameIdRef = useRef(null);
   const videoRef = useRef(null);
+  const activeRoomIdRef = useRef(null);
 
   /**
    * Encrypt data using Web Crypto API (client-side)
@@ -96,6 +100,7 @@ export const useScreenShare = () => {
         screenStreamRef.current = stream;
         setSharedStream(stream);
         setIsSharing(true);
+        activeRoomIdRef.current = roomId;
 
         // Get the canvas from the reference
         const canvas = canvasRef.current;
@@ -132,7 +137,7 @@ export const useScreenShare = () => {
 
         // Listen for stop event
         stream.getTracks()[0].onended = () => {
-          stopScreenShare(receiverId, roomId);
+          stopScreenShare(receiverId, activeRoomIdRef.current || roomId);
         };
       } catch (error) {
         console.error("Error starting screen share:", error);
@@ -162,11 +167,16 @@ export const useScreenShare = () => {
       setIsSharing(false);
       setSharedStream(null);
       setEncryptionKey(null);
+      activeRoomIdRef.current = null;
 
       if (socket) {
+        const effectiveRoomId =
+          roomId && roomId.startsWith("screen-share-")
+            ? roomId
+            : activeRoomIdRef.current;
         socket.emit("stop-screen-share", {
-          roomId: roomId,
-          initiatorId: socket.id,
+          roomId: effectiveRoomId,
+          initiatorId: authUser?._id,
           receiverId,
         });
       }

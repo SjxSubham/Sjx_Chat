@@ -29,7 +29,7 @@ const ScreenShareButton = ({
       console.log("[Screen Share Button] Received request, opening modal");
     };
 
-    const handleScreenShareAccepted = () => {
+    const handleScreenShareAccepted = ({ roomId }) => {
       setOutgoingRequestRoomId(null);
       setShowModal(true);
       toast.success("Screen share request accepted!");
@@ -42,7 +42,7 @@ const ScreenShareButton = ({
 
     const handleScreenShareCancelled = () => {
       setOutgoingRequestRoomId(null);
-      toast.info("Screen share request was cancelled by recipient");
+      toast.info("Screen share request was cancelled");
     };
 
     socket.on("screen-share-request", handleScreenShareRequest);
@@ -140,8 +140,12 @@ const ScreenShareButton = ({
       {/* Screen Share Button */}
       <button
         onClick={handleScreenShareClick}
-        title="Share Your Screen (E2E Encrypted)"
-        className="btn btn-sm btn-ghost hover:bg-blue-100 transition-colors"
+        title={
+          outgoingRequestRoomId
+            ? "Screen share request pending..."
+            : "Share Your Screen (E2E Encrypted)"
+        }
+        className="btn btn-sm btn-ghost hover:bg-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         disabled={!socket || !!outgoingRequestRoomId}
       >
         <MdOutlineScreenShare size={20} className="text-black font-bold" />

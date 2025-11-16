@@ -60,6 +60,7 @@ const ScreenShareModal = ({
   const [encryptionKey, setEncryptionKey] = useState(null);
   const [isAwaitingAcceptance, setIsAwaitingAcceptance] = useState(false);
   const [incomingRoomId, setIncomingRoomId] = useState(null);
+  const [currentRoomId, setCurrentRoomId] = useState(null);
   const [incomingInitiatorId, setIncomingInitiatorId] = useState(null);
   const remoteCanvasRef = useRef(null);
   const timerRef = useRef(null);
@@ -121,6 +122,8 @@ const ScreenShareModal = ({
 
     const handleScreenShareStopped = ({ duration, shareReport, reason }) => {
       setIsReceiving(false);
+      setCurrentRoomId(null);
+      setIncomingRoomId(null);
 
       if (shareReport) {
         const durationStr = shareReport.durationFormatted;
@@ -144,6 +147,11 @@ const ScreenShareModal = ({
       setIsReceiving(true);
       if (key) {
         setEncryptionKey(key);
+      }
+      if (acceptedRoomId) {
+        setCurrentRoomId(acceptedRoomId);
+        // Start broadcasting only after acceptance
+        startScreenShare(recipientId, acceptedRoomId, key);
       }
       setSessionStartTime(Date.now());
       toast.success("Screen share accepted");
@@ -171,6 +179,7 @@ const ScreenShareModal = ({
       // Incoming request from initiator
       setEncryptionKey(key);
       setIncomingRoomId(roomId);
+      setCurrentRoomId(roomId);
       setIncomingInitiatorId(initiatorId);
       toast.info(`${recipientName} is requesting to share their screen`);
       console.log(
@@ -217,6 +226,7 @@ const ScreenShareModal = ({
 
       // Generate roomId locally
       const roomId = `screen-share-${conversationId}-${authUser?._id}-${Date.now()}`;
+      setCurrentRoomId(roomId);
 
       // Emit request with conversation ID
       socket?.emit("initiate-screen-share", {
@@ -256,17 +266,19 @@ const ScreenShareModal = ({
     setIsReceiving(true);
     setSessionStartTime(Date.now());
     setIncomingRoomId(null);
+    setCurrentRoomId(roomId);
     toast.success("Screen share accepted");
   };
 
   const handleStopShare = () => {
-    stopScreenShare(recipientId, conversationId);
+    stopScreenShare(recipientId, currentRoomId || incomingRoomId);
     setCanvasData(null);
     setSessionStartTime(null);
     setElapsedTime(0);
     setEncryptionKey(null);
     setIncomingRoomId(null);
     setIncomingInitiatorId(null);
+    setCurrentRoomId(null);
     setIsAwaitingAcceptance(false);
     if (timerRef.current) {
       clearInterval(timerRef.current);
@@ -281,6 +293,7 @@ const ScreenShareModal = ({
       // Cancel the request if modal is closed while waiting
       socket?.emit("cancel-screen-share-request", {
         receiverId: recipientId,
+        roomId: currentRoomId,
         conversationId: conversationId,
       });
     }
@@ -288,6 +301,7 @@ const ScreenShareModal = ({
     setIsAwaitingAcceptance(false);
     setIncomingRoomId(null);
     setIncomingInitiatorId(null);
+    setCurrentRoomId(null);
     onClose();
   };
 
