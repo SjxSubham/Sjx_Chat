@@ -64,6 +64,7 @@ const ScreenShareModal = ({
   const [incomingInitiatorId, setIncomingInitiatorId] = useState(null);
   const remoteCanvasRef = useRef(null);
   const timerRef = useRef(null);
+  const roleRef = useRef(null); // 'initiator' or 'receiver'
   const { startScreenShare, stopScreenShare, isSharing, canvasRef } =
     useScreenShare();
 
@@ -143,16 +144,41 @@ const ScreenShareModal = ({
       roomId: acceptedRoomId,
       encryptionKey: key,
     }) => {
+      // This event is only emitted to the initiator by the server
+      console.log("[ScreenShareModal] Accepted event received:", {
+        acceptedRoomId,
+        hasKey: !!key,
+      });
+
+      // Clear awaiting state
       setIsAwaitingAcceptance(false);
-      setIsReceiving(true);
+
+      // Determine role explicitly via roleRef (set on initiation or request receipt)
+      const isInitiator = roleRef.current === "initiator";
+
       if (key) {
         setEncryptionKey(key);
       }
+
       if (acceptedRoomId) {
         setCurrentRoomId(acceptedRoomId);
-        // Start broadcasting only after acceptance
-        startScreenShare(recipientId, acceptedRoomId, key);
+
+        if (isInitiator) {
+          // Ensure we start sharing if not already
+          if (!isSharing) {
+            console.log(
+              "[ScreenShareModal] Starting capture after acceptance with room:",
+              acceptedRoomId,
+            );
+            startScreenShare(recipientId, acceptedRoomId, key);
+          }
+          setIsReceiving(false);
+        } else {
+          // (Defensive) If ever sent to receiver in future version
+          setIsReceiving(true);
+        }
       }
+
       setSessionStartTime(Date.now());
       toast.success("Screen share accepted");
     };
@@ -177,6 +203,7 @@ const ScreenShareModal = ({
       encryptionKey: key,
     }) => {
       // Incoming request from initiator
+      roleRef.current = "receiver";
       setEncryptionKey(key);
       setIncomingRoomId(roomId);
       setCurrentRoomId(roomId);
@@ -222,11 +249,26 @@ const ScreenShareModal = ({
 
   const handleStartShare = async () => {
     try {
+      roleRef.current = "initiator";
       setIsAwaitingAcceptance(true);
 
       // Generate roomId locally
       const roomId = `screen-share-${conversationId}-${authUser?._id}-${Date.now()}`;
       setCurrentRoomId(roomId);
+
+      console.log(
+        "[ScreenShareModal] Initiating screen share request with room:",
+        roomId,
+      );
+
+      // Start local capture immediately so user isn't stuck on "Awaiting response"
+      // Frames sent before acceptance won't reach receiver (they're not in the room yet) but give instant local preview.
+      if (!isSharing) {
+        console.log(
+          "[ScreenShareModal] Starting provisional local capture before acceptance",
+        );
+        startScreenShare(recipientId, roomId, null);
+      }
 
       // Emit request with conversation ID
       socket?.emit("initiate-screen-share", {
