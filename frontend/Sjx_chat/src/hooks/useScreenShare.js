@@ -1,198 +1,336 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSocketContext } from "../context/SocketContext";
 import { useAuthContext } from "../context/AuthContext";
+
+const DEFAULT_CAPTURE_OPTIONS = {
+  video: {
+    cursor: "always",
+    frameRate: 30,
+    width: { ideal: 1280 },
+    height: { ideal: 720 },
+  },
+  audio: false,
+};
+
+const JPEG_PRESET = {
+  quality: 0.6,
+  mimeType: "image/jpeg",
+};
+
+const FRAME_INTERVAL_MS = 1000 / 20; // ~20 FPS upper bound
+
+const createInitialStats = () => ({
+  frames: 0,
+  bytesSent: 0,
+  startedAt: null,
+  stoppedAt: null,
+});
 
 export const useScreenShare = () => {
   const { socket } = useSocketContext();
   const { authUser } = useAuthContext();
 
   const [isSharing, setIsSharing] = useState(false);
-  const [sharedStream, setSharedStream] = useState(null);
+  const [isStarting, setIsStarting] = useState(false);
   const [error, setError] = useState(null);
+  const [activeRoomId, setActiveRoomId] = useState(null);
   const [encryptionKey, setEncryptionKey] = useState(null);
+
   const canvasRef = useRef(null);
-  const screenStreamRef = useRef(null);
-  const frameIdRef = useRef(null);
-  const videoRef = useRef(null);
+  const previewVideoRef = useRef(null);
   const activeRoomIdRef = useRef(null);
+  const initiatorIdRef = useRef(authUser?._id || null);
 
-  /**
-   * Encrypt data using Web Crypto API (client-side)
-   */
-  const encryptFrameClientSide = useCallback(async (frameData, key) => {
-    try {
-      if (!key) return frameData;
+  const captureStreamRef = useRef(null);
+  const animationFrameRef = useRef(null);
+  const lastFrameAtRef = useRef(0);
+  const pendingStopRef = useRef(false);
+  const statsRef = useRef(createInitialStats());
 
-      const keyBuffer = await crypto.subtle.importKey(
-        "raw",
-        Buffer.from(key, "base64"),
-        { name: "AES-GCM" },
-        false,
-        ["encrypt"],
-      );
+  useEffect(() => {
+    initiatorIdRef.current = authUser?._id || null;
+  }, [authUser?._id]);
 
-      const iv = crypto.getRandomValues(new Uint8Array(12));
-      const encoder = new TextEncoder();
-      const data = encoder.encode(frameData);
+  const setInitiatorOverride = useCallback(
+    (overrideId) => {
+      initiatorIdRef.current = overrideId || authUser?._id || null;
+    },
+    [authUser?._id],
+  );
 
-      const encryptedData = await crypto.subtle.encrypt(
-        { name: "AES-GCM", iv: iv },
-        keyBuffer,
-        data,
-      );
-
-      return {
-        encryptedData: Buffer.from(encryptedData).toString("hex"),
-        iv: Buffer.from(iv).toString("base64"),
-        encrypted: true,
-      };
-    } catch (error) {
-      console.error("Client-side encryption error:", error);
-      return frameData;
-    }
+  const resetStats = useCallback(() => {
+    statsRef.current = createInitialStats();
   }, []);
 
-  /**
-   * Decrypt data using Web Crypto API (client-side)
-   */
-  const decryptFrameClientSide = useCallback(async (encryptedPayload, key) => {
-    try {
-      if (!key || !encryptedPayload.encrypted) {
-        return encryptedPayload;
+  const getElapsedSeconds = useCallback(() => {
+    const { startedAt, stoppedAt } = statsRef.current;
+    if (!startedAt) return 0;
+    const end = stoppedAt || Date.now();
+    return Math.max(0, Math.round((end - startedAt) / 1000));
+  }, []);
+
+  const cleanupStream = useCallback(() => {
+    pendingStopRef.current = false;
+
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+
+    if (captureStreamRef.current) {
+      captureStreamRef.current.getTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch (trackError) {
+          console.warn("Failed to stop capture track", trackError);
+        }
+      });
+      captureStreamRef.current = null;
+    }
+
+    if (previewVideoRef.current) {
+      previewVideoRef.current.srcObject = null;
+    }
+
+    setIsSharing(false);
+    setIsStarting(false);
+  }, []);
+
+  const emitStopEvent = useCallback(
+    ({ receiverId, conversationId, reason }) => {
+      if (!socket || !activeRoomId) return;
+
+      socket.emit("stop-screen-share", {
+        roomId: activeRoomId,
+        initiatorId: initiatorIdRef.current,
+        receiverId,
+        conversationId,
+        stats: {
+          ...statsRef.current,
+          durationSeconds: getElapsedSeconds(),
+          reason: reason || "user_stopped",
+        },
+      });
+    },
+    [socket, activeRoomId, getElapsedSeconds],
+  );
+
+  const stopTransportOnly = useCallback(() => {
+    cleanupStream();
+    setActiveRoomId(null);
+    setEncryptionKey(null);
+  }, [cleanupStream]);
+
+  const stopShare = useCallback(
+    ({ receiverId, conversationId, reason } = {}) => {
+      if (!isSharing && !captureStreamRef.current) return;
+
+      pendingStopRef.current = true;
+      statsRef.current.stoppedAt = Date.now();
+
+      stopTransportOnly();
+      emitStopEvent({ receiverId, conversationId, reason });
+    },
+    [stopTransportOnly, emitStopEvent, isSharing],
+  );
+
+  const sendFrame = useCallback(
+    async ({ roomId, customData }) => {
+      if (!socket || !canvasRef.current || !captureStreamRef.current) return;
+
+      const now = performance.now();
+      if (now - lastFrameAtRef.current < FRAME_INTERVAL_MS) {
+        animationFrameRef.current = requestAnimationFrame(() =>
+          sendFrame({ roomId, customData }),
+        );
+        return;
       }
 
-      const keyBuffer = await crypto.subtle.importKey(
-        "raw",
-        Buffer.from(key, "base64"),
-        { name: "AES-GCM" },
-        false,
-        ["decrypt"],
-      );
+      lastFrameAtRef.current = now;
 
-      const iv = Buffer.from(encryptedPayload.iv, "base64");
-      const encryptedData = Buffer.from(encryptedPayload.encryptedData, "hex");
-
-      const decryptedData = await crypto.subtle.decrypt(
-        { name: "AES-GCM", iv: iv },
-        keyBuffer,
-        encryptedData,
-      );
-
-      const decoder = new TextDecoder();
-      return decoder.decode(decryptedData);
-    } catch (error) {
-      console.error("Client-side decryption error:", error);
-      return null;
-    }
-  }, []);
-
-  const startScreenShare = useCallback(
-    async (receiverId, roomId, key) => {
       try {
-        setError(null);
-        setEncryptionKey(key);
-
-        const stream = await navigator.mediaDevices.getDisplayMedia({
-          video: { cursor: "always" },
-          audio: false,
-        });
-
-        screenStreamRef.current = stream;
-        setSharedStream(stream);
-        setIsSharing(true);
-        activeRoomIdRef.current = roomId;
-
-        // Get the canvas from the reference
         const canvas = canvasRef.current;
-        if (canvas) {
-          const ctx = canvas.getContext("2d");
-          const video = document.createElement("video");
-          videoRef.current = video;
-          video.srcObject = stream;
-          video.play();
+        const context = canvas.getContext("2d", { willReadFrequently: false });
+        const video = previewVideoRef.current;
 
-          const sendFrame = async () => {
-            try {
-              if (video.readyState === video.HAVE_ENOUGH_DATA) {
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                const imageData = canvas.toDataURL("image/jpeg", 0.5);
+        if (video?.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+          context.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const frame = canvas.toDataURL(
+            JPEG_PRESET.mimeType,
+            JPEG_PRESET.quality,
+          );
 
-                if (socket) {
-                  // Send plain data - server will encrypt
-                  socket.emit("screen-stream-data", {
-                    roomId: roomId,
-                    data: imageData,
-                  });
-                }
-              }
-            } catch (error) {
-              console.error("Error sending frame:", error);
-            }
+          statsRef.current.frames += 1;
+          statsRef.current.bytesSent += frame.length;
 
-            frameIdRef.current = requestAnimationFrame(sendFrame);
-          };
-
-          frameIdRef.current = requestAnimationFrame(sendFrame);
+          socket.emit("screen-stream-data", {
+            roomId,
+            data: frame,
+            meta: {
+              timestamp: Date.now(),
+              ...customData,
+            },
+          });
         }
+      } catch (frameError) {
+        console.error("Failed to capture frame", frameError);
+      }
 
-        // Listen for stop event
-        stream.getTracks()[0].onended = () => {
-          stopScreenShare(receiverId, activeRoomIdRef.current || roomId);
-        };
-      } catch (error) {
-        console.error("Error starting screen share:", error);
-        setError(error.message);
-        setIsSharing(false);
+      if (!pendingStopRef.current) {
+        animationFrameRef.current = requestAnimationFrame(() =>
+          sendFrame({ roomId, customData }),
+        );
       }
     },
     [socket],
   );
 
-  const stopScreenShare = useCallback(
-    (receiverId, roomId) => {
-      if (screenStreamRef.current) {
-        screenStreamRef.current.getTracks().forEach((track) => {
-          track.stop();
+  const startShare = useCallback(
+    async (
+      {
+        roomId,
+        receiverId,
+        conversationId,
+        key,
+        captureOptions = {},
+        customMeta = {},
+        onPreview,
+      },
+      { width = 1280, height = 720 } = {},
+    ) => {
+      if (!socket) {
+        setError("Socket connection not available.");
+        return null;
+      }
+
+      if (isStarting || isSharing) {
+        setError("Screen share is already running.");
+        return null;
+      }
+
+      if (!roomId || !receiverId || !conversationId) {
+        setError("Missing room, receiver, or conversation information.");
+        return null;
+      }
+
+      setIsStarting(true);
+      resetStats();
+
+      try {
+        const stream = await navigator.mediaDevices.getDisplayMedia({
+          ...DEFAULT_CAPTURE_OPTIONS,
+          ...captureOptions,
         });
-      }
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = null;
-      }
+        captureStreamRef.current = stream;
+        activeRoomIdRef.current = roomId;
+        setActiveRoomId(roomId);
+        setEncryptionKey(key || null);
 
-      if (frameIdRef.current) {
-        cancelAnimationFrame(frameIdRef.current);
-      }
+        statsRef.current.startedAt = Date.now();
 
-      setIsSharing(false);
-      setSharedStream(null);
-      setEncryptionKey(null);
-      activeRoomIdRef.current = null;
+        const video =
+          previewVideoRef.current || document.createElement("video");
+        previewVideoRef.current = video;
+        video.srcObject = stream;
+        video.muted = true;
+        await video.play();
 
-      if (socket) {
-        const effectiveRoomId =
-          roomId && roomId.startsWith("screen-share-")
-            ? roomId
-            : activeRoomIdRef.current;
-        socket.emit("stop-screen-share", {
-          roomId: effectiveRoomId,
-          initiatorId: authUser?._id,
-          receiverId,
-        });
+        if (typeof onPreview === "function") {
+          onPreview(stream);
+        }
+
+        const canvas = canvasRef.current;
+        if (canvas) {
+          canvas.width = width;
+          canvas.height = height;
+        }
+
+        setIsSharing(true);
+        setIsStarting(false);
+
+        const track = stream.getVideoTracks()[0];
+        track.addEventListener(
+          "ended",
+          () =>
+            stopShare({
+              receiverId,
+              conversationId,
+              reason: "initiator_disconnected",
+            }),
+          { once: true },
+        );
+
+        pendingStopRef.current = false;
+        animationFrameRef.current = requestAnimationFrame(() =>
+          sendFrame({
+            roomId,
+            customData: {
+              receiverId,
+              conversationId,
+              ...customMeta,
+            },
+          }),
+        );
+
+        return stream;
+      } catch (captureError) {
+        console.error("Failed to start screen share:", captureError);
+        setError(captureError.message || "Failed to start screen share");
+        cleanupStream();
+        return null;
       }
     },
-    [socket],
+    [socket, isStarting, isSharing, resetStats, sendFrame, stopShare],
+  );
+
+  useEffect(() => {
+    if (!socket) return undefined;
+
+    const handleStop = () => {
+      cleanupStream();
+      setActiveRoomId(null);
+      setEncryptionKey(null);
+    };
+
+    socket.on("screen-share-stopped", handleStop);
+    return () => {
+      socket.off("screen-share-stopped", handleStop);
+    };
+  }, [socket, cleanupStream]);
+
+  const state = useMemo(
+    () => ({
+      isSharing,
+      isStarting,
+      error,
+      roomId: activeRoomId,
+      encryptionKey,
+      stats: {
+        ...statsRef.current,
+        durationSeconds: getElapsedSeconds(),
+      },
+    }),
+    [
+      isSharing,
+      isStarting,
+      error,
+      activeRoomId,
+      encryptionKey,
+      getElapsedSeconds,
+    ],
   );
 
   return {
-    isSharing,
-    sharedStream,
-    startScreenShare,
-    stopScreenShare,
-    encryptFrameClientSide,
-    decryptFrameClientSide,
+    ...state,
     canvasRef,
-    error,
-    encryptionKey,
+    previewVideoRef,
+    startShare,
+    stopShare,
+    stopTransportOnly,
+    resetStats,
+    setInitiatorOverride,
   };
 };
+
+export default useScreenShare;

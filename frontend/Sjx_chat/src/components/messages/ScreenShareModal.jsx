@@ -1,47 +1,43 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSocketContext } from "../../context/SocketContext";
-import { useScreenShare } from "../../hooks/useScreenShare";
 import { useAuthContext } from "../../context/AuthContext";
+import useScreenShare from "../../hooks/useScreenShare";
+import { decryptScreenFrame } from "../../utils/screenShareCrypto";
+import { formatDuration } from "../../utils/time";
 import toast from "react-hot-toast";
+import {
+  HiOutlineDesktopComputer,
+  HiOutlineShieldCheck,
+  HiOutlineStop,
+  HiOutlineVideoCamera,
+} from "react-icons/hi";
 
-// Decrypt received encrypted frames using Web Crypto API
-async function decryptFrame(encryptedPayload, keyBase64) {
-  try {
-    const keyBuffer = await crypto.subtle.importKey(
-      "raw",
-      Uint8Array.from(atob(keyBase64), (c) => c.charCodeAt(0)),
-      { name: "AES-GCM" },
-      false,
-      ["decrypt"],
-    );
+const SESSION_STATE = {
+  IDLE: "idle",
+  REQUESTING: "requesting",
+  PENDING: "pending",
+  CONNECTING: "connecting",
+  LIVE: "live",
+  RECEIVING: "receiving",
+};
 
-    const iv = Uint8Array.from(atob(encryptedPayload.iv), (c) =>
-      c.charCodeAt(0),
-    );
-    const authTag = Uint8Array.from(atob(encryptedPayload.authTag), (c) =>
-      c.charCodeAt(0),
-    );
+const STATUS_COLORS = {
+  idle: "badge-ghost",
+  requesting: "badge-warning",
+  pending: "badge-info",
+  connecting: "badge-accent",
+  live: "badge-success",
+  receiving: "badge-primary",
+};
 
-    // Convert hex string to Uint8Array
-    const encryptedDataArray = new Uint8Array(
-      encryptedPayload.encryptedData.match(/../g).map((x) => parseInt(x, 16)),
-    );
+const initialMetrics = {
+  frames: 0,
+  bytes: 0,
+  startedAt: null,
+};
 
-    // Combine encrypted data + auth tag for GCM
-    const combined = new Uint8Array([...encryptedDataArray, ...authTag]);
-
-    const decrypted = await crypto.subtle.decrypt(
-      { name: "AES-GCM", iv: iv },
-      keyBuffer,
-      combined,
-    );
-
-    return new TextDecoder().decode(decrypted);
-  } catch (error) {
-    console.error("Frame decryption error:", error);
-    return null;
-  }
-}
+const buildRoomId = ({ conversationId, initiatorId }) =>
+  `screen-share-${conversationId}-${initiatorId}-${Date.now()}`;
 
 const ScreenShareModal = ({
   isOpen,
@@ -49,499 +45,465 @@ const ScreenShareModal = ({
   recipientId,
   recipientName,
   conversationId,
-  onRequestSent,
+  onScreenShareReport,
 }) => {
   const { socket } = useSocketContext();
   const { authUser } = useAuthContext();
-  const [isReceiving, setIsReceiving] = useState(false);
-  const [canvasData, setCanvasData] = useState(null);
-  const [sessionStartTime, setSessionStartTime] = useState(null);
-  const [elapsedTime, setElapsedTime] = useState(0);
-  const [encryptionKey, setEncryptionKey] = useState(null);
-  const [isAwaitingAcceptance, setIsAwaitingAcceptance] = useState(false);
-  const [incomingRoomId, setIncomingRoomId] = useState(null);
+  const {
+    isSharing,
+    isStarting,
+    roomId: activeRoomId,
+    stats,
+    startShare,
+    stopShare,
+    stopTransportOnly,
+    setInitiatorOverride,
+    canvasRef,
+  } = useScreenShare();
+
+  const [sessionState, setSessionState] = useState(SESSION_STATE.IDLE);
+  const [inboundRequest, setInboundRequest] = useState(null);
   const [currentRoomId, setCurrentRoomId] = useState(null);
-  const [incomingInitiatorId, setIncomingInitiatorId] = useState(null);
+  const [encryptionKey, setEncryptionKey] = useState(null);
+  const [metrics, setMetrics] = useState(initialMetrics);
+  const [localPreviewEnabled, setLocalPreviewEnabled] = useState(true);
+  const [isAwaitingAcceptance, setIsAwaitingAcceptance] = useState(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
   const remoteCanvasRef = useRef(null);
   const timerRef = useRef(null);
-  const roleRef = useRef(null); // 'initiator' or 'receiver'
-  const { startScreenShare, stopScreenShare, isSharing, canvasRef } =
-    useScreenShare();
 
-  // Format elapsed time
-  const formatElapsedTime = (seconds) => {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
+  const sessionDuration = useMemo(
+    () => formatDuration(elapsedSeconds || stats.durationSeconds || 0),
+    [elapsedSeconds, stats.durationSeconds],
+  );
 
-    if (hours > 0) {
-      return `${hours}h ${minutes}m ${secs}s`;
-    }
-    if (minutes > 0) {
-      return `${minutes}m ${secs}s`;
-    }
-    return `${secs}s`;
-  };
-
-  // Handle elapsed time timer
-  useEffect(() => {
-    if (!isSharing || !sessionStartTime) return;
-
-    timerRef.current = setInterval(() => {
-      const elapsed = Math.floor((Date.now() - sessionStartTime) / 1000);
-      setElapsedTime(elapsed);
-    }, 1000);
-
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
-    };
-  }, [isSharing, sessionStartTime]);
-
-  // Socket event handlers
-  useEffect(() => {
-    if (!socket || !isOpen) return;
-
-    const handleScreenStreamData = async ({ encryptedData, iv, authTag }) => {
-      try {
-        if (!encryptionKey) return;
-
-        // Decrypt the received frame
-        const decryptedData = await decryptFrame(
-          { encryptedData, iv, authTag },
-          encryptionKey,
-        );
-
-        if (decryptedData) {
-          setCanvasData(decryptedData);
-        }
-      } catch (error) {
-        console.error("Error processing received frame:", error);
-      }
-    };
-
-    const handleScreenShareStopped = ({ duration, shareReport, reason }) => {
-      setIsReceiving(false);
-      setCurrentRoomId(null);
-      setIncomingRoomId(null);
-
-      if (shareReport) {
-        const durationStr = shareReport.durationFormatted;
-
-        if (
-          reason === "initiator_disconnected" ||
-          reason === "receiver_disconnected"
-        ) {
-          toast.error(`Screen share interrupted after ${durationStr}`);
-        } else {
-          toast.success(`Screen share ended (Duration: ${durationStr})`);
-        }
-      }
-    };
-
-    const handleScreenShareAccepted = ({
-      roomId: acceptedRoomId,
-      encryptionKey: key,
-    }) => {
-      // This event is only emitted to the initiator by the server
-      console.log("[ScreenShareModal] Accepted event received:", {
-        acceptedRoomId,
-        hasKey: !!key,
-      });
-
-      // Clear awaiting state
-      setIsAwaitingAcceptance(false);
-
-      // Determine role explicitly via roleRef (set on initiation or request receipt)
-      const isInitiator = roleRef.current === "initiator";
-
-      if (key) {
-        setEncryptionKey(key);
-      }
-
-      if (acceptedRoomId) {
-        setCurrentRoomId(acceptedRoomId);
-
-        if (isInitiator) {
-          // Ensure we start sharing if not already
-          if (!isSharing) {
-            console.log(
-              "[ScreenShareModal] Starting capture after acceptance with room:",
-              acceptedRoomId,
-            );
-            startScreenShare(recipientId, acceptedRoomId, key);
-          }
-          setIsReceiving(false);
-        } else {
-          // (Defensive) If ever sent to receiver in future version
-          setIsReceiving(true);
-        }
-      }
-
-      setSessionStartTime(Date.now());
-      toast.success("Screen share accepted");
-    };
-
-    const handleScreenShareRejected = () => {
-      setIsAwaitingAcceptance(false);
-      setIsReceiving(false);
-      setSessionStartTime(null);
-      setElapsedTime(0);
-      toast.error("Screen share rejected");
-      onClose();
-    };
-
-    const handleScreenShareError = ({ error }) => {
-      setIsAwaitingAcceptance(false);
-      toast.error(error || "Screen share error occurred");
-    };
-
-    const handleScreenShareRequest = ({
-      initiatorId,
-      roomId,
-      encryptionKey: key,
-    }) => {
-      // Incoming request from initiator
-      roleRef.current = "receiver";
-      setEncryptionKey(key);
-      setIncomingRoomId(roomId);
-      setCurrentRoomId(roomId);
-      setIncomingInitiatorId(initiatorId);
-      toast.info(`${recipientName} is requesting to share their screen`);
-      console.log(
-        `[Screen Share] Request received from ${initiatorId} with room ${roomId}`,
-      );
-    };
-
-    socket.on("screen-stream-data", handleScreenStreamData);
-    socket.on("screen-share-stopped", handleScreenShareStopped);
-    socket.on("screen-share-accepted", handleScreenShareAccepted);
-    socket.on("screen-share-request", handleScreenShareRequest);
-    socket.on("screen-share-rejected", handleScreenShareRejected);
-    socket.on("screen-share-error", handleScreenShareError);
-
-    return () => {
-      socket.off("screen-stream-data", handleScreenStreamData);
-      socket.off("screen-share-stopped", handleScreenShareStopped);
-      socket.off("screen-share-accepted", handleScreenShareAccepted);
-      socket.off("screen-share-request", handleScreenShareRequest);
-      socket.off("screen-share-rejected", handleScreenShareRejected);
-      socket.off("screen-share-error", handleScreenShareError);
-    };
-  }, [socket, isOpen, onClose, encryptionKey]);
-
-  // Display received canvas data
-  useEffect(() => {
-    if (canvasData && remoteCanvasRef.current) {
-      const canvas = remoteCanvasRef.current;
-      const ctx = canvas.getContext("2d");
-      const img = new Image();
-      img.onload = () => {
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      };
-      img.onerror = () => {
-        console.error("Failed to load image data");
-      };
-      img.src = canvasData;
-    }
-  }, [canvasData]);
-
-  const handleStartShare = async () => {
-    try {
-      roleRef.current = "initiator";
-      setIsAwaitingAcceptance(true);
-
-      // Generate roomId locally
-      const roomId = `screen-share-${conversationId}-${authUser?._id}-${Date.now()}`;
-      setCurrentRoomId(roomId);
-
-      console.log(
-        "[ScreenShareModal] Initiating screen share request with room:",
-        roomId,
-      );
-
-      // Start local capture immediately so user isn't stuck on "Awaiting response"
-      // Frames sent before acceptance won't reach receiver (they're not in the room yet) but give instant local preview.
-      if (!isSharing) {
-        console.log(
-          "[ScreenShareModal] Starting provisional local capture before acceptance",
-        );
-        startScreenShare(recipientId, roomId, null);
-      }
-
-      // Emit request with conversation ID
-      socket?.emit("initiate-screen-share", {
-        receiverId: recipientId,
-        initiatorId: authUser?._id,
-        conversationId: conversationId,
-        roomId: roomId,
-      });
-
-      // Notify parent component that request was sent
-      if (onRequestSent) {
-        onRequestSent(roomId);
-      }
-
-      toast.success("Screen share request sent");
-    } catch (error) {
-      setIsAwaitingAcceptance(false);
-      toast.error("Failed to start screen share");
-      console.error(error);
-    }
-  };
-
-  const handleAcceptShare = (roomId) => {
-    if (!roomId || !incomingInitiatorId) {
-      toast.error("Missing room or initiator information");
-      return;
-    }
-
-    // Accept the screen share
-    socket?.emit("accept-screen-share", {
-      initiatorId: incomingInitiatorId,
-      receiverId: authUser?._id,
-      roomId: roomId,
-      conversationId: conversationId,
-    });
-
-    setIsReceiving(true);
-    setSessionStartTime(Date.now());
-    setIncomingRoomId(null);
-    setCurrentRoomId(roomId);
-    toast.success("Screen share accepted");
-  };
-
-  const handleStopShare = () => {
-    stopScreenShare(recipientId, currentRoomId || incomingRoomId);
-    setCanvasData(null);
-    setSessionStartTime(null);
-    setElapsedTime(0);
-    setEncryptionKey(null);
-    setIncomingRoomId(null);
-    setIncomingInitiatorId(null);
+  const resetSession = () => {
+    setSessionState(SESSION_STATE.IDLE);
+    setInboundRequest(null);
     setCurrentRoomId(null);
+    setEncryptionKey(null);
+    setMetrics(initialMetrics);
     setIsAwaitingAcceptance(false);
+    setElapsedSeconds(0);
     if (timerRef.current) {
       clearInterval(timerRef.current);
     }
   };
 
-  const handleClose = () => {
-    if (isSharing) {
-      handleStopShare();
+  const beginTimer = () => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      setElapsedSeconds((prev) => prev + 1);
+    }, 1000);
+  };
+
+  useEffect(() => {
+    if (!isOpen) {
+      resetSession();
+      stopTransportOnly();
     }
-    if (isAwaitingAcceptance) {
-      // Cancel the request if modal is closed while waiting
-      socket?.emit("cancel-screen-share-request", {
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+
+  useEffect(
+    () => () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleScreenShareRequest = ({
+      initiatorId,
+      roomId,
+      encryptionKey,
+    }) => {
+      if (initiatorId === authUser?._id) return;
+      setInitiatorOverride(initiatorId);
+      setInboundRequest({ initiatorId, roomId, encryptionKey });
+      setEncryptionKey(encryptionKey);
+      setCurrentRoomId(roomId);
+      setSessionState(SESSION_STATE.PENDING);
+      setLocalPreviewEnabled(false);
+      toast.custom(
+        () => (
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 shadow-lg flex items-center gap-4">
+            <HiOutlineVideoCamera className="text-blue-600 text-3xl" />
+            <div>
+              <p className="font-semibold text-blue-900">
+                {recipientName || "This user"} wants to share their screen.
+              </p>
+              <p className="text-sm text-blue-600">
+                Accept to join a zero-knowledge encrypted session.
+              </p>
+            </div>
+          </div>
+        ),
+        { duration: 4000 },
+      );
+    };
+
+    const handleScreenShareAccepted = ({ roomId, encryptionKey }) => {
+      if (roomId !== currentRoomId) return;
+      setEncryptionKey(encryptionKey);
+      setIsAwaitingAcceptance(false);
+      setSessionState(SESSION_STATE.CONNECTING);
+      startOutboundStream({ roomId, encryptionKey });
+    };
+
+    const handleScreenShareRejected = ({ roomId }) => {
+      if (roomId !== currentRoomId) return;
+      toast.error("Screen share request was declined");
+      resetSession();
+    };
+
+    const handleScreenShareStopped = ({ shareReport, reason }) => {
+      if (shareReport) {
+        onScreenShareReport?.(shareReport);
+      }
+      if (reason) {
+        toast(reason.includes("disconnected") ? "info" : "success", {
+          description: `Screen sharing ended (${reason})`,
+        });
+      }
+      stopTransportOnly();
+      resetSession();
+    };
+
+    const handleScreenShareError = ({ error }) => {
+      toast.error(error || "Screen share error");
+      stopTransportOnly();
+      resetSession();
+    };
+
+    const handleScreenStreamData = async ({ encryptedData, iv, authTag }) => {
+      if (!encryptionKey || !remoteCanvasRef.current) return;
+      const decoded = await decryptScreenFrame(
+        { encryptedData, iv, authTag },
+        encryptionKey,
+      );
+      if (!decoded) return;
+      const canvas = remoteCanvasRef.current;
+      const context = canvas.getContext("2d");
+      const image = new Image();
+      image.onload = () => {
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      };
+      image.src = decoded;
+      setMetrics((prev) => ({
+        ...prev,
+        frames: prev.frames + 1,
+        bytes: prev.bytes + decoded.length,
+      }));
+    };
+
+    socket.on("screen-share-request", handleScreenShareRequest);
+    socket.on("screen-share-accepted", handleScreenShareAccepted);
+    socket.on("screen-share-rejected", handleScreenShareRejected);
+    socket.on("screen-share-stopped", handleScreenShareStopped);
+    socket.on("screen-share-error", handleScreenShareError);
+    socket.on("screen-stream-data", handleScreenStreamData);
+
+    return () => {
+      socket.off("screen-share-request", handleScreenShareRequest);
+      socket.off("screen-share-accepted", handleScreenShareAccepted);
+      socket.off("screen-share-rejected", handleScreenShareRejected);
+      socket.off("screen-share-stopped", handleScreenShareStopped);
+      socket.off("screen-share-error", handleScreenShareError);
+      socket.off("screen-stream-data", handleScreenStreamData);
+    };
+  }, [
+    socket,
+    authUser?._id,
+    startShare,
+    stopShare,
+    stopTransportOnly,
+    currentRoomId,
+    encryptionKey,
+    recipientName,
+    onScreenShareReport,
+  ]);
+
+  const startOutboundStream = async ({ roomId, encryptionKey }) => {
+    try {
+      setMetrics((prev) => ({ ...prev, startedAt: Date.now() }));
+      beginTimer();
+      setSessionState(SESSION_STATE.CONNECTING);
+      await startShare(
+        {
+          roomId,
+          receiverId: recipientId,
+          conversationId,
+          key: encryptionKey,
+        },
+        { width: 1280, height: 720 },
+      );
+      setSessionState(SESSION_STATE.LIVE);
+    } catch (error) {
+      console.error("Failed to start outbound share", error);
+      toast.error("Unable to start screen share");
+      resetSession();
+    }
+  };
+
+  const handleInitiateClick = async () => {
+    if (!socket || !recipientId || !conversationId || !authUser?._id) {
+      toast.error("Missing user or conversation context");
+      return;
+    }
+
+    const roomId = buildRoomId({
+      conversationId,
+      initiatorId: authUser._id,
+    });
+
+    setCurrentRoomId(roomId);
+    setSessionState(SESSION_STATE.REQUESTING);
+    setIsAwaitingAcceptance(true);
+
+    socket.emit("initiate-screen-share", {
+      receiverId: recipientId,
+      initiatorId: authUser._id,
+      conversationId,
+      roomId,
+    });
+
+    toast.success("Screen share request sent");
+  };
+
+  const handleAcceptClick = () => {
+    if (!socket || !inboundRequest) return;
+
+    socket.emit("accept-screen-share", {
+      initiatorId: inboundRequest.initiatorId,
+      receiverId: authUser?._id,
+      roomId: inboundRequest.roomId,
+      conversationId,
+    });
+
+    setSessionState(SESSION_STATE.RECEIVING);
+    setEncryptionKey(inboundRequest.encryptionKey);
+    beginTimer();
+    setInboundRequest(null);
+  };
+
+  const handleRejectClick = () => {
+    if (!socket || !inboundRequest) return;
+    socket.emit("reject-screen-share", {
+      initiatorId: inboundRequest.initiatorId,
+      roomId: inboundRequest.roomId,
+      conversationId,
+    });
+    toast.success("Screen share request dismissed");
+    resetSession();
+  };
+
+  const handleStopClick = () => {
+    if (!currentRoomId && !activeRoomId) {
+      resetSession();
+      return;
+    }
+    stopShare({
+      receiverId: recipientId,
+      conversationId,
+      reason: "user_stopped",
+    });
+    stopTransportOnly();
+    resetSession();
+  };
+
+  const handleClose = () => {
+    if (sessionState === SESSION_STATE.REQUESTING && socket && currentRoomId) {
+      socket.emit("cancel-screen-share-request", {
         receiverId: recipientId,
         roomId: currentRoomId,
-        conversationId: conversationId,
+        conversationId,
       });
     }
-    setEncryptionKey(null);
-    setIsAwaitingAcceptance(false);
-    setIncomingRoomId(null);
-    setIncomingInitiatorId(null);
-    setCurrentRoomId(null);
+    if (
+      sessionState === SESSION_STATE.LIVE ||
+      sessionState === SESSION_STATE.RECEIVING
+    ) {
+      handleStopClick();
+    } else {
+      stopTransportOnly();
+      resetSession();
+    }
     onClose();
   };
 
   if (!isOpen) return null;
 
+  const statusBadge = (
+    <span className={`badge ${STATUS_COLORS[sessionState]} uppercase`}>
+      {sessionState}
+    </span>
+  );
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="flex justify-between items-center mb-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-5xl rounded-2xl bg-white shadow-2xl">
+        <header className="border-b p-6 flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-bold">Screen Share (E2E Encrypted)</h2>
-            <p className="text-sm text-gray-600 mt-1">
-              Sharing with {recipientName || "user"} - End-to-end encrypted
-            </p>
+            <p className="text-sm text-gray-500">Secure Screen Sharing</p>
+            <h1 className="text-2xl font-bold text-gray-900">
+              {recipientName || "Selected user"}
+            </h1>
+            <div className="mt-2 flex items-center gap-3 text-sm text-gray-600">
+              {statusBadge}
+              <span>Duration: {sessionDuration}</span>
+              {encryptionKey && (
+                <span className="inline-flex items-center gap-1 text-green-600">
+                  <HiOutlineShieldCheck />
+                  End-to-end encrypted
+                </span>
+              )}
+            </div>
           </div>
           <button
             onClick={handleClose}
-            className="text-gray-500 hover:text-gray-700 text-3xl font-bold leading-none"
+            className="btn btn-ghost text-xl"
+            aria-label="Close modal"
           >
-            ×
+            ✕
           </button>
-        </div>
+        </header>
 
-        {/* Encryption Status */}
-        {encryptionKey && (
-          <div className="mb-4 px-4 py-3 bg-green-50 rounded-lg border border-green-200 flex items-center gap-2">
-            <div className="w-2 h-2 bg-green-600 rounded-full animate-pulse"></div>
-            <span className="text-sm text-green-700 font-medium">
-              🔒 End-to-end encrypted - Only you and{" "}
-              {recipientName || "recipient"} can see this
-            </span>
-          </div>
-        )}
-
-        {/* Duration Display */}
-        {isSharing && (
-          <div className="mb-4 px-4 py-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border-l-4 border-blue-500">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                  Session Duration
-                </p>
-                <p className="text-2xl font-bold text-blue-600 mt-1">
-                  {formatElapsedTime(elapsedTime)}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-                <span className="text-sm font-medium text-green-600">Live</span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Awaiting Acceptance Status */}
-        {isAwaitingAcceptance && !isSharing && (
-          <div className="mb-4 px-4 py-3 bg-yellow-50 rounded-lg border-l-4 border-yellow-500">
-            <div className="flex items-center gap-3">
-              <div className="w-3 h-3 bg-yellow-500 rounded-full animate-pulse"></div>
-              <p className="text-sm text-yellow-700 font-medium">
-                Waiting for {recipientName || "recipient"} to accept the screen
-                share...
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Incoming Request - Show Accept/Reject Buttons */}
-        {encryptionKey && !isSharing && !isAwaitingAcceptance && (
-          <div className="mb-4 px-4 py-3 bg-blue-50 rounded-lg border-l-4 border-blue-500">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
-                <p className="text-sm text-blue-700 font-medium">
-                  {recipientName || "User"} wants to share their screen
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => handleAcceptShare(incomingRoomId)}
-                  className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white text-sm font-medium rounded transition-colors"
-                >
-                  Accept
-                </button>
-                <button
-                  onClick={() => {
-                    setEncryptionKey(null);
-                    setIncomingRoomId(null);
-                    setIncomingInitiatorId(null);
-                    socket?.emit("reject-screen-share", {
-                      initiatorId: incomingInitiatorId,
-                      roomId: incomingRoomId,
-                      conversationId: conversationId,
-                    });
-                    toast.info("Screen share request rejected");
-                  }}
-                  className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white text-sm font-medium rounded transition-colors"
-                >
-                  Reject
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-          {/* Local Screen */}
-          <div className="border-2 border-gray-300 rounded-lg p-4 bg-gray-50">
-            <h3 className="font-semibold mb-3 text-center text-gray-700">
-              Your Screen
-            </h3>
-            <canvas
-              ref={canvasRef}
-              width={640}
-              height={480}
-              className="w-full border-2 border-gray-200 rounded bg-black shadow-md"
-            />
-            {isSharing && (
-              <div className="mt-2 flex items-center justify-center gap-2 text-green-600">
-                <div className="w-2 h-2 bg-green-600 rounded-full animate-pulse"></div>
-                <span className="text-sm font-medium">
-                  🔒 Broadcasting (Encrypted)
+        <section className="grid gap-4 p-6 md:grid-cols-2">
+          <div className="rounded-2xl border bg-gray-50 p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <p className="font-semibold text-gray-700">Your Screen</p>
+              {isSharing && (
+                <span className="text-sm text-green-600 flex items-center gap-1">
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-green-500" />
+                  Live
                 </span>
+              )}
+            </div>
+            {localPreviewEnabled ? (
+              <canvas
+                ref={canvasRef}
+                width={640}
+                height={360}
+                className="h-64 w-full rounded-xl border bg-black object-contain shadow-inner"
+              />
+            ) : (
+              <div className="flex h-64 items-center justify-center rounded-xl border border-dashed bg-white text-gray-500">
+                <HiOutlineDesktopComputer size={48} className="mb-2" />
+                <p className="text-center text-sm">
+                  Waiting for the other participant to share
+                </p>
               </div>
             )}
           </div>
 
-          {/* Remote Screen */}
-          <div className="border-2 border-gray-300 rounded-lg p-4 bg-gray-50">
-            <h3 className="font-semibold mb-3 text-center text-gray-700">
-              {isReceiving
-                ? `${recipientName || "Recipient"}'s Screen`
-                : "Waiting for share..."}
-            </h3>
+          <div className="rounded-2xl border bg-gray-50 p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <p className="font-semibold text-gray-700">Remote Screen</p>
+              <span className="text-xs uppercase text-gray-500">
+                {sessionState === SESSION_STATE.RECEIVING
+                  ? "Streaming"
+                  : "Standby"}
+              </span>
+            </div>
             <canvas
               ref={remoteCanvasRef}
               width={640}
-              height={480}
-              className="w-full border-2 border-gray-200 rounded bg-black shadow-md"
+              height={360}
+              className="h-64 w-full rounded-xl border bg-black object-contain shadow-inner"
             />
-            {!isReceiving && (
-              <div className="mt-2 flex items-center justify-center gap-2 text-gray-500">
-                <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
-                <span className="text-sm font-medium">Standby</span>
+            <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-gray-600">
+              <div>
+                <p className="font-semibold text-gray-500">Frames</p>
+                <p className="text-gray-900">
+                  {metrics.frames || stats.frames || 0}
+                </p>
               </div>
-            )}
+              <div>
+                <p className="font-semibold text-gray-500">Data</p>
+                <p className="text-gray-900">
+                  {((metrics.bytes || stats.bytesSent || 0) / 1024).toFixed(1)}{" "}
+                  KB
+                </p>
+              </div>
+            </div>
           </div>
-        </div>
+        </section>
 
-        <div className="flex gap-3 flex-wrap">
-          {!isSharing ? (
-            <button
-              onClick={handleStartShare}
-              disabled={isAwaitingAcceptance}
-              className="flex-1 min-w-[150px] bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white font-bold py-3 px-4 rounded-lg transition-colors duration-200 shadow-md"
-            >
-              {isAwaitingAcceptance
-                ? "Awaiting Response..."
-                : "Start Sharing Screen"}
-            </button>
-          ) : (
-            <button
-              onClick={handleStopShare}
-              className="flex-1 min-w-[150px] bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-4 rounded-lg transition-colors duration-200 shadow-md animate-pulse"
-            >
-              Stop Sharing
-            </button>
-          )}
-          <button
-            onClick={handleClose}
-            className="flex-1 min-w-[150px] bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-4 rounded-lg transition-colors duration-200 shadow-md"
-          >
-            Close
-          </button>
-        </div>
+        <section className="border-t bg-gray-50 p-6">
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="rounded-2xl border bg-white p-4 shadow-sm">
+              <h3 className="mb-2 text-sm font-semibold uppercase text-gray-500">
+                Controls
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={handleInitiateClick}
+                  disabled={isStarting || sessionState !== SESSION_STATE.IDLE}
+                  className="btn btn-primary flex-1 gap-2"
+                >
+                  <HiOutlineVideoCamera size={18} />
+                  Start a session
+                </button>
+                <button
+                  onClick={handleStopClick}
+                  disabled={sessionState === SESSION_STATE.IDLE}
+                  className="btn btn-error flex-1 gap-2"
+                >
+                  <HiOutlineStop size={18} />
+                  Stop session
+                </button>
+                <button
+                  onClick={() => setLocalPreviewEnabled((prev) => !prev)}
+                  className="btn flex-1 gap-2"
+                >
+                  <HiOutlineDesktopComputer size={18} />
+                  {localPreviewEnabled ? "Hide preview" : "Show preview"}
+                </button>
+              </div>
+              {isAwaitingAcceptance && (
+                <p className="mt-3 text-sm text-amber-600">
+                  Waiting for {recipientName || "recipient"} to approve your
+                  request…
+                </p>
+              )}
+            </div>
 
-        <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
-          <p className="text-sm text-blue-800 mb-2">
-            <strong>🔒 How it works:</strong>
-          </p>
-          <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
-            <li>
-              Click "Start Sharing Screen" to initiate a screen share request
-            </li>
-            <li>Recipient accepts, and both users join the secure session</li>
-            <li>
-              Screen frames are end-to-end encrypted using AES-256-GCM - not
-              visible to server
-            </li>
-            <li>
-              Only the two users in this conversation can view the shared screen
-            </li>
-            <li>Click "Stop Sharing" to end the session</li>
-            <li>
-              A report with duration is automatically saved to the conversation
-            </li>
-          </ul>
-        </div>
+            <div className="rounded-2xl border bg-white p-4 shadow-sm">
+              <h3 className="mb-2 text-sm font-semibold uppercase text-gray-500">
+                Incoming Request
+              </h3>
+              {inboundRequest ? (
+                <div className="space-y-2 rounded-xl border border-blue-200 bg-blue-50 p-3">
+                  <p className="font-semibold text-blue-900">
+                    {recipientName || "This user"} wants to share their screen
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      className="btn btn-sm btn-success flex-1"
+                      onClick={handleAcceptClick}
+                    >
+                      Accept
+                    </button>
+                    <button
+                      className="btn btn-sm btn-ghost flex-1"
+                      onClick={handleRejectClick}
+                    >
+                      Decline
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">
+                  No incoming requests at the moment.
+                </p>
+              )}
+            </div>
+          </div>
+        </section>
       </div>
     </div>
   );
